@@ -93,7 +93,7 @@ class SmartThingsCover(SmartThingsEntity, CoverEntity):
 
     async def async_set_cover_position(self, **kwargs):
         """Move the cover to a specific position."""
-        if not self._supported_features & SUPPORT_SET_POSITION:
+        if not self._supported_features & CoverEntityFeature.SET_POSITION:
             return
         # Do not set_status=True as device will report progress.
         await self._device.set_level(kwargs[ATTR_POSITION], 0)
@@ -102,13 +102,13 @@ class SmartThingsCover(SmartThingsEntity, CoverEntity):
         """Update the attrs of the cover."""
         value = None
         if Capability.door_control in self._device.capabilities:
-            self._device_class = DEVICE_CLASS_DOOR
+            self._device_class = CoverDeviceClass.DOOR
             value = self._device.status.door
         elif Capability.window_shade in self._device.capabilities:
-            self._device_class = DEVICE_CLASS_SHADE
+            self._device_class = CoverDeviceClass.SHADE
             value = self._device.status.window_shade
         elif Capability.garage_door_control in self._device.capabilities:
-            self._device_class = DEVICE_CLASS_GARAGE
+            self._device_class = CoverDeviceClass.GARAGE
             value = self._device.status.door
 
         self._state = VALUE_TO_STATE.get(value)
@@ -138,7 +138,7 @@ class SmartThingsCover(SmartThingsEntity, CoverEntity):
     @property
     def current_cover_position(self):
         """Return current position of cover."""
-        if not self._supported_features & SUPPORT_SET_POSITION:
+        if not self._supported_features & CoverEntityFeature.SET_POSITION:
             return None
         return self._device.status.level
 

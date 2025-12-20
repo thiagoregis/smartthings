@@ -38,6 +38,7 @@ STATE_TO_MODE = {
     HVACMode.HEAT: "heat",
     HVACMode.OFF: "off",
     HVACMode.FAN_ONLY: "wind",
+    HVACMode.AUTO: "eco",
 }
 
 OPERATING_STATE_TO_ACTION = {
@@ -67,6 +68,7 @@ STATE_TO_AC_MODE = {
     HVACMode.DRY: "dry",
     HVACMode.HEAT: "heat",
     HVACMode.FAN_ONLY: "wind",
+    HVACMode.AUTO: "auto",
 }
 
 
@@ -378,9 +380,13 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         # Turn on the device if it's off before setting mode.
         if not self._device.status.switch:
             tasks.append(self._device.switch_on(set_status=True))
+        ac_mode = STATE_TO_AC_MODE.get(hvac_mode)
+        if ac_mode is None:
+            _LOGGER.error(f"Modo HVAC não suportado: {hvac_mode}")
+            return
         tasks.append(
             self._device.set_air_conditioner_mode(
-                STATE_TO_AC_MODE[hvac_mode], set_status=True
+                ac_mode, set_status=True
             )
         )
         await asyncio.gather(*tasks)

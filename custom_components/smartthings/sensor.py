@@ -19,13 +19,13 @@ from homeassistant.components.sensor import (
 
 from homeassistant.const import (
     UnitOfArea,
-    CONCENTRATION_PARTS_PER_MILLION,
+    UnitOfConcentration,
     UnitOfElectricPotential,  # Nuovo
     UnitOfEnergy,             # Nuovo
     UnitOfPower,              # Nuovo
     UnitOfTemperature,        # Nuovo
     PERCENTAGE,
-    LIGHT_LUX,
+    UnitOfIlluminance,
     UnitOfMass,
     UnitOfVolume,
 )
@@ -109,7 +109,7 @@ CAPABILITY_TO_SENSORS = {
         Map(
             Attribute.carbon_dioxide,
             "Carbon Dioxide Measurement",
-            CONCENTRATION_PARTS_PER_MILLION,
+            UnitOfConcentration.PARTS_PER_MILLION,
             SensorDeviceClass.CO2,
             SensorStateClass.MEASUREMENT,
             None,
@@ -129,7 +129,7 @@ CAPABILITY_TO_SENSORS = {
         Map(
             Attribute.carbon_monoxide_level,
             "Carbon Monoxide Measurement",
-            CONCENTRATION_PARTS_PER_MILLION,
+            UnitOfConcentration.PARTS_PER_MILLION,
             SensorDeviceClass.CO,
             SensorStateClass.MEASUREMENT,
             None,
@@ -210,7 +210,7 @@ CAPABILITY_TO_SENSORS = {
         Map(
             Attribute.equivalent_carbon_dioxide_measurement,
             "Equivalent Carbon Dioxide Measurement",
-            CONCENTRATION_PARTS_PER_MILLION,
+            UnitOfConcentration.PARTS_PER_MILLION,
             None,
             SensorStateClass.MEASUREMENT,
             None,
@@ -220,7 +220,7 @@ CAPABILITY_TO_SENSORS = {
         Map(
             Attribute.formaldehyde_level,
             "Formaldehyde Measurement",
-            CONCENTRATION_PARTS_PER_MILLION,
+            UnitOfConcentration.PARTS_PER_MILLION,
             None,
             SensorStateClass.MEASUREMENT,
             None,
@@ -259,7 +259,7 @@ CAPABILITY_TO_SENSORS = {
         Map(
             Attribute.illuminance,
             "Illuminance",
-            LIGHT_LUX,
+            UnitOfIlluminance.LUX,
             SensorDeviceClass.ILLUMINANCE,
             SensorStateClass.MEASUREMENT,
             None,
@@ -504,7 +504,7 @@ CAPABILITY_TO_SENSORS = {
         Map(
             Attribute.tvoc_level,
             "Tvoc Measurement",
-            CONCENTRATION_PARTS_PER_MILLION,
+            UnitOfConcentration.PARTS_PER_MILLION,
             None,
             SensorStateClass.MEASUREMENT,
             None,

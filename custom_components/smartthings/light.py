@@ -202,20 +202,14 @@ class SmartThingsLight(SmartThingsEntity, LightEntity):
         return self._device.status.switch
 
     @property
-    def max_mireds(self):
-        """Return the warmest color_temp that this light supports."""
-        # SmartThings does not expose this attribute, instead it's
-        # implemented within each device-type handler.  This value is the
-        # lowest kelvin found supported across 20+ handlers.
-        return 500  # 2000K
+    def min_color_temp_kelvin(self) -> int:
+        """Return the coldest color_temp that this light supports."""
+        return 2000
 
     @property
-    def min_mireds(self):
-        """Return the coldest color_temp that this light supports."""
-        # SmartThings does not expose this attribute, instead it's
-        # implemented within each device-type handler.  This value is the
-        # highest kelvin found supported across 20+ handlers.
-        return 111  # 9000K
+    def max_color_temp_kelvin(self) -> int:
+        """Return the warmest color_temp that this light supports."""
+        return 9000
 
     @property
     def supported_features(self) -> int:
