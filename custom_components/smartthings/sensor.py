@@ -608,8 +608,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     ]
                 )
             elif capability == Capability.power_consumption_report:
-                reports = POWER_CONSUMPTION_REPORT_NAMES
-                if device.status.attributes["energySavingSupport"].value is False:
+                reports = list(POWER_CONSUMPTION_REPORT_NAMES)
+                if (
+                    device.status.attributes.get("energySavingSupport")
+                    and device.status.attributes["energySavingSupport"].value is False
+                ):
                     if "energySaved" in reports:
                         reports.remove("energySaved")
                 sensors.extend(
@@ -634,40 +637,44 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                         for m in maps
                     ]
                 )
+        mnmn = device.status.attributes.get(Attribute.mnmn)
         if (
-            device.status.attributes[Attribute.mnmn].value == "Samsung Electronics"
+            mnmn
+            and mnmn.value == "Samsung Electronics"
             and device.type == "OCF"
         ):
-            model = device.status.attributes[Attribute.mnmo].value.split("|")[0]
-            if model in ("TP2X_DA-KS-RANGE-0101X",):
-                sensors.extend(
-                    [
-                        SamsungOvenWarmingCenter(device),
-                        SamsungOcfTemperatureSensor(
-                            device, "Temperature", "/temperature/current/cook/0"
-                        ),
-                        SamsungOcfTemperatureSensor(
-                            device,
-                            "Meat Probe Temperature",
-                            "/temperature/current/prob/0",
-                        ),
-                    ]
-                )
-            elif model in ("21K_REF_LCD_FHUB6.0", "ARTIK051_REF_17K"):
-                sensors.extend(
-                    [
-                        SamsungOcfTemperatureSensor(
-                            device,
-                            "Cooler Temperature",
-                            "/temperature/current/cooler/0",
-                        ),
-                        SamsungOcfTemperatureSensor(
-                            device,
-                            "Freezer Temperature",
-                            "/temperature/current/freezer/0",
-                        ),
-                    ]
-                )
+            mnmo = device.status.attributes.get(Attribute.mnmo)
+            if mnmo:
+                model = mnmo.value.split("|")[0]
+                if model in ("TP2X_DA-KS-RANGE-0101X",):
+                    sensors.extend(
+                        [
+                            SamsungOvenWarmingCenter(device),
+                            SamsungOcfTemperatureSensor(
+                                device, "Temperature", "/temperature/current/cook/0"
+                            ),
+                            SamsungOcfTemperatureSensor(
+                                device,
+                                "Meat Probe Temperature",
+                                "/temperature/current/prob/0",
+                            ),
+                        ]
+                    )
+                elif model in ("21K_REF_LCD_FHUB6.0", "ARTIK051_REF_17K"):
+                    sensors.extend(
+                        [
+                            SamsungOcfTemperatureSensor(
+                                device,
+                                "Cooler Temperature",
+                                "/temperature/current/cooler/0",
+                            ),
+                            SamsungOcfTemperatureSensor(
+                                device,
+                                "Freezer Temperature",
+                                "/temperature/current/freezer/0",
+                            ),
+                        ]
+                    )
 
     async_add_entities(sensors)
 
