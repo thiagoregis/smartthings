@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 import json
 
+import functools
 import asyncio
 
 from pysmartthings import Attribute, Capability
@@ -19,13 +20,7 @@ from homeassistant.components.sensor import (
 
 from homeassistant.const import (
     UnitOfArea,
-    UnitOfConcentration,
-    UnitOfElectricPotential,  # Nuovo
-    UnitOfEnergy,             # Nuovo
-    UnitOfPower,              # Nuovo
-    UnitOfTemperature,        # Nuovo
     PERCENTAGE,
-    UnitOfIlluminance,
     UnitOfMass,
     UnitOfVolume,
 )
@@ -40,8 +35,10 @@ Map = namedtuple(
     "map", "attribute name default_unit device_class state_class entity_category"
 )
 
-CAPABILITY_TO_SENSORS = {
-    Capability.activity_lighting_mode: [
+@functools.lru_cache(maxsize=1)
+def get_capability_sensors_map():
+    return {
+        Capability.activity_lighting_mode: [
         Map(
             Attribute.lighting_mode,
             "Activity Lighting Mode",
@@ -50,86 +47,86 @@ CAPABILITY_TO_SENSORS = {
             None,
             EntityCategory.CONFIG,
         )
-    ],
-    Capability.air_conditioner_mode: [
-        Map(
+        ],
+        Capability.air_conditioner_mode: [
+            Map(
             Attribute.air_conditioner_mode,
             "Air Conditioner Mode",
             None,
             None,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.air_quality_sensor: [
-        Map(
+            )
+        ],
+        Capability.air_quality_sensor: [
+            Map(
             Attribute.air_quality,
             "Air Quality",
             "CAQI",
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.alarm: [Map(Attribute.alarm, "Alarm", None, None, None, None)],
-    Capability.audio_volume: [
-        Map(Attribute.volume, "Volume", PERCENTAGE, None, None, None)
-    ],
-    Capability.battery: [
-        Map(
+            )
+        ],
+        Capability.alarm: [Map(Attribute.alarm, "Alarm", None, None, None, None)],
+        Capability.audio_volume: [
+            Map(Attribute.volume, "Volume", PERCENTAGE, None, None, None)
+        ],
+        Capability.battery: [
+            Map(
             Attribute.battery,
             "Battery",
             PERCENTAGE,
             SensorDeviceClass.BATTERY,
             None,
             EntityCategory.DIAGNOSTIC,
-        )
-    ],
-    Capability.body_mass_index_measurement: [
-        Map(
+            )
+        ],
+        Capability.body_mass_index_measurement: [
+            Map(
             Attribute.bmi_measurement,
             "Body Mass Index",
             f"{UnitOfMass.KILOGRAMS}/{UnitOfArea.SQUARE_METERS}",
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.body_weight_measurement: [
-        Map(
+            )
+        ],
+        Capability.body_weight_measurement: [
+            Map(
             Attribute.body_weight_measurement,
             "Body Weight",
             UnitOfMass.KILOGRAMS,
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.carbon_dioxide_measurement: [
-        Map(
+            )
+        ],
+        Capability.carbon_dioxide_measurement: [
+            Map(
             Attribute.carbon_dioxide,
             "Carbon Dioxide Measurement",
-            UnitOfConcentration.PARTS_PER_MILLION,
+            "ppm",
             SensorDeviceClass.CO2,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.carbon_monoxide_detector: [
-        Map(
+            )
+        ],
+        Capability.carbon_monoxide_detector: [
+            Map(
             Attribute.carbon_monoxide,
             "Carbon Monoxide Detector",
             None,
             None,
             None,
             None,
-        )
-    ],
-    Capability.carbon_monoxide_measurement: [
-        Map(
+            )
+        ],
+        Capability.carbon_monoxide_measurement: [
+            Map(
             Attribute.carbon_monoxide_level,
             "Carbon Monoxide Measurement",
-            UnitOfConcentration.PARTS_PER_MILLION,
+            "ppm",
             SensorDeviceClass.CO,
             SensorStateClass.MEASUREMENT,
             None,
@@ -154,434 +151,434 @@ CAPABILITY_TO_SENSORS = {
             SensorDeviceClass.TIMESTAMP,
             None,
             None,
-        ),
-    ],
-    Capability.dryer_mode: [
-        Map(
+            ),
+        ],
+        Capability.dryer_mode: [
+            Map(
             Attribute.dryer_mode,
             "Dryer Mode",
             None,
             None,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.dryer_operating_state: [
-        Map(Attribute.machine_state, "Dryer Machine State", None, None, None, None),
-        Map(Attribute.dryer_job_state, "Dryer Job State", None, None, None, None),
-        Map(
+            )
+        ],
+        Capability.dryer_operating_state: [
+            Map(Attribute.machine_state, "Dryer Machine State", None, None, None, None),
+            Map(Attribute.dryer_job_state, "Dryer Job State", None, None, None, None),
+            Map(
             Attribute.completion_time,
             "Dryer Completion Time",
             None,
             SensorDeviceClass.TIMESTAMP,
             None,
             None,
-        ),
-    ],
-    Capability.dust_sensor: [
-        Map(
+            ),
+        ],
+        Capability.dust_sensor: [
+            Map(
             Attribute.fine_dust_level,
             "Fine Dust Level",
             None,
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        ),
-        Map(
+            ),
+            Map(
             Attribute.dust_level,
             "Dust Level",
             None,
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        ),
-    ],
-    Capability.energy_meter: [
-        Map(
+            ),
+        ],
+        Capability.energy_meter: [
+            Map(
             Attribute.energy,
             "Energy Meter",
-            UnitOfEnergy.KILO_WATT_HOUR,
+            "kWh",
             SensorDeviceClass.ENERGY,
             SensorStateClass.TOTAL_INCREASING,
             None,
-        )
-    ],
-    Capability.equivalent_carbon_dioxide_measurement: [
-        Map(
+            )
+        ],
+        Capability.equivalent_carbon_dioxide_measurement: [
+            Map(
             Attribute.equivalent_carbon_dioxide_measurement,
             "Equivalent Carbon Dioxide Measurement",
-            UnitOfConcentration.PARTS_PER_MILLION,
+            "ppm",
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.formaldehyde_measurement: [
-        Map(
+            )
+        ],
+        Capability.formaldehyde_measurement: [
+            Map(
             Attribute.formaldehyde_level,
             "Formaldehyde Measurement",
-            UnitOfConcentration.PARTS_PER_MILLION,
+            "ppm",
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.gas_meter: [
-        Map(
+            )
+        ],
+        Capability.gas_meter: [
+            Map(
             Attribute.gas_meter,
             "Gas Meter",
-            UnitOfEnergy.KILO_WATT_HOUR,
+            "kWh",
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        ),
-        Map(
+            ),
+            Map(
             Attribute.gas_meter_calorific, "Gas Meter Calorific", None, None, None, None
-        ),
-        Map(
+            ),
+            Map(
             Attribute.gas_meter_time,
             "Gas Meter Time",
             None,
             SensorDeviceClass.TIMESTAMP,
             None,
             None,
-        ),
-        Map(
+            ),
+            Map(
             Attribute.gas_meter_volume,
             "Gas Meter Volume",
             UnitOfVolume.CUBIC_METERS,
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        ),
-    ],
-    Capability.illuminance_measurement: [
-        Map(
+            ),
+        ],
+        Capability.illuminance_measurement: [
+            Map(
             Attribute.illuminance,
             "Illuminance",
-            UnitOfIlluminance.LUX,
+            "lx",
             SensorDeviceClass.ILLUMINANCE,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.infrared_level: [
-        Map(
+            )
+        ],
+        Capability.infrared_level: [
+            Map(
             Attribute.infrared_level,
             "Infrared Level",
             PERCENTAGE,
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.media_input_source: [
-        Map(Attribute.input_source, "Media Input Source", None, None, None, None)
-    ],
-    Capability.media_playback_repeat: [
-        Map(
+            )
+        ],
+        Capability.media_input_source: [
+            Map(Attribute.input_source, "Media Input Source", None, None, None, None)
+        ],
+        Capability.media_playback_repeat: [
+            Map(
             Attribute.playback_repeat_mode,
             "Media Playback Repeat",
             None,
             None,
             None,
             None,
-        )
-    ],
-    Capability.media_playback_shuffle: [
-        Map(
+            )
+        ],
+        Capability.media_playback_shuffle: [
+            Map(
             Attribute.playback_shuffle, "Media Playback Shuffle", None, None, None, None
-        )
-    ],
-    Capability.media_playback: [
-        Map(Attribute.playback_status, "Media Playback Status", None, None, None, None)
-    ],
-    Capability.odor_sensor: [
-        Map(Attribute.odor_level, "Odor Sensor", None, None, None, None)
-    ],
-    Capability.oven_mode: [
-        Map(
+            )
+        ],
+        Capability.media_playback: [
+            Map(Attribute.playback_status, "Media Playback Status", None, None, None, None)
+        ],
+        Capability.odor_sensor: [
+            Map(Attribute.odor_level, "Odor Sensor", None, None, None, None)
+        ],
+        Capability.oven_mode: [
+            Map(
             Attribute.oven_mode,
             "Mode",
             None,
             None,
             None,
             None,
-        )
-    ],
-    Capability.oven_operating_state: [
-        Map(Attribute.operation_time, "Operation Time", None, None, None, None),
-        Map(Attribute.machine_state, "Machine State", None, None, None, None),
-        Map(Attribute.oven_job_state, "Job State", None, None, None, None),
-        Map(
+            )
+        ],
+        Capability.oven_operating_state: [
+            Map(Attribute.operation_time, "Operation Time", None, None, None, None),
+            Map(Attribute.machine_state, "Machine State", None, None, None, None),
+            Map(Attribute.oven_job_state, "Job State", None, None, None, None),
+            Map(
             Attribute.completion_time,
             "Completion Time",
             None,
             SensorDeviceClass.TIMESTAMP,
             None,
             None,
-        ),
-        Map(Attribute.progress, "Progress", PERCENTAGE, None, None, None),
-    ],
-    Capability.oven_setpoint: [
-        Map(
+            ),
+            Map(Attribute.progress, "Progress", PERCENTAGE, None, None, None),
+        ],
+        Capability.oven_setpoint: [
+            Map(
             Attribute.oven_setpoint,
             "Temperature Setpoint",
             None,
             SensorDeviceClass.TEMPERATURE,
             None,
             None,
-        )
-    ],
-    Capability.power_consumption_report: [],
-    Capability.power_meter: [
-        Map(
+            )
+        ],
+        Capability.power_consumption_report: [],
+        Capability.power_meter: [
+            Map(
             Attribute.power,
             "Power Meter",
-            UnitOfPower.WATT,
+            "W",
             SensorDeviceClass.POWER,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.power_source: [
-        Map(
+            )
+        ],
+        Capability.power_source: [
+            Map(
             Attribute.power_source,
             "Power Source",
             None,
             None,
             None,
             EntityCategory.DIAGNOSTIC,
-        )
-    ],
-    Capability.refrigeration_setpoint: [
-        Map(
+            )
+        ],
+        Capability.refrigeration_setpoint: [
+            Map(
             Attribute.refrigeration_setpoint,
             "Refrigeration Setpoint",
             None,
             SensorDeviceClass.TEMPERATURE,
             None,
             None,
-        )
-    ],
-    Capability.relative_humidity_measurement: [
-        Map(
+            )
+        ],
+        Capability.relative_humidity_measurement: [
+            Map(
             Attribute.humidity,
             "Relative Humidity Measurement",
             PERCENTAGE,
             SensorDeviceClass.HUMIDITY,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.robot_cleaner_cleaning_mode: [
-        Map(
+            )
+        ],
+        Capability.robot_cleaner_cleaning_mode: [
+            Map(
             Attribute.robot_cleaner_cleaning_mode,
             "Robot Cleaner Cleaning Mode",
             None,
             None,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.robot_cleaner_movement: [
-        Map(
+            )
+        ],
+        Capability.robot_cleaner_movement: [
+            Map(
             Attribute.robot_cleaner_movement,
             "Robot Cleaner Movement",
             None,
             None,
             None,
             None,
-        )
-    ],
-    Capability.robot_cleaner_turbo_mode: [
-        Map(
+            )
+        ],
+        Capability.robot_cleaner_turbo_mode: [
+            Map(
             Attribute.robot_cleaner_turbo_mode,
             "Robot Cleaner Turbo Mode",
             None,
             None,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.signal_strength: [
-        Map(
+            )
+        ],
+        Capability.signal_strength: [
+            Map(
             Attribute.lqi,
             "LQI Signal Strength",
             None,
             None,
             SensorStateClass.MEASUREMENT,
             EntityCategory.DIAGNOSTIC,
-        ),
-        Map(
+            ),
+            Map(
             Attribute.rssi,
             "RSSI Signal Strength",
             None,
             SensorDeviceClass.SIGNAL_STRENGTH,
             SensorStateClass.MEASUREMENT,
             EntityCategory.DIAGNOSTIC,
-        ),
-    ],
-    Capability.smoke_detector: [
-        Map(Attribute.smoke, "Smoke Detector", None, None, None, None)
-    ],
-    Capability.temperature_measurement: [
-        Map(
+            ),
+        ],
+        Capability.smoke_detector: [
+            Map(Attribute.smoke, "Smoke Detector", None, None, None, None)
+        ],
+        Capability.temperature_measurement: [
+            Map(
             Attribute.temperature,
             "Temperature Measurement",
             None,
             SensorDeviceClass.TEMPERATURE,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.thermostat_cooling_setpoint: [
-        Map(
+            )
+        ],
+        Capability.thermostat_cooling_setpoint: [
+            Map(
             Attribute.cooling_setpoint,
             "Thermostat Cooling Setpoint",
             None,
             SensorDeviceClass.TEMPERATURE,
             None,
             None,
-        )
-    ],
-    Capability.thermostat_fan_mode: [
-        Map(
+            )
+        ],
+        Capability.thermostat_fan_mode: [
+            Map(
             Attribute.thermostat_fan_mode,
             "Thermostat Fan Mode",
             None,
             None,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.thermostat_heating_setpoint: [
-        Map(
+            )
+        ],
+        Capability.thermostat_heating_setpoint: [
+            Map(
             Attribute.heating_setpoint,
             "Thermostat Heating Setpoint",
             None,
             SensorDeviceClass.TEMPERATURE,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.thermostat_mode: [
-        Map(
+            )
+        ],
+        Capability.thermostat_mode: [
+            Map(
             Attribute.thermostat_mode,
             "Thermostat Mode",
             None,
             None,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.thermostat_operating_state: [
-        Map(
+            )
+        ],
+        Capability.thermostat_operating_state: [
+            Map(
             Attribute.thermostat_operating_state,
             "Thermostat Operating State",
             None,
             None,
             None,
             None,
-        )
-    ],
-    Capability.thermostat_setpoint: [
-        Map(
+            )
+        ],
+        Capability.thermostat_setpoint: [
+            Map(
             Attribute.thermostat_setpoint,
             "Thermostat Setpoint",
             None,
             SensorDeviceClass.TEMPERATURE,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.three_axis: [],
-    Capability.tv_channel: [
-        Map(Attribute.tv_channel, "Tv Channel", None, None, None, None),
-        Map(Attribute.tv_channel_name, "Tv Channel Name", None, None, None, None),
-    ],
-    Capability.tvoc_measurement: [
-        Map(
+            )
+        ],
+        Capability.three_axis: [],
+        Capability.tv_channel: [
+            Map(Attribute.tv_channel, "Tv Channel", None, None, None, None),
+            Map(Attribute.tv_channel_name, "Tv Channel Name", None, None, None, None),
+        ],
+        Capability.tvoc_measurement: [
+            Map(
             Attribute.tvoc_level,
             "Tvoc Measurement",
-            UnitOfConcentration.PARTS_PER_MILLION,
+            "ppm",
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.ultraviolet_index: [
-        Map(
+            )
+        ],
+        Capability.ultraviolet_index: [
+            Map(
             Attribute.ultraviolet_index,
             "Ultraviolet Index",
             None,
             None,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.voltage_measurement: [
-        Map(
+            )
+        ],
+        Capability.voltage_measurement: [
+            Map(
             Attribute.voltage,
             "Voltage Measurement",
-            UnitOfElectricPotential.VOLT,
+            "V",
             SensorDeviceClass.VOLTAGE,
             SensorStateClass.MEASUREMENT,
             None,
-        )
-    ],
-    Capability.washer_mode: [
-        Map(
+            )
+        ],
+        Capability.washer_mode: [
+            Map(
             Attribute.washer_mode,
             "Washer Mode",
             None,
             None,
             None,
             EntityCategory.CONFIG,
-        )
-    ],
-    Capability.washer_operating_state: [
-        Map(Attribute.machine_state, "Washer Machine State", None, None, None, None),
-        Map(Attribute.washer_job_state, "Washer Job State", None, None, None, None),
-        Map(
+            )
+        ],
+        Capability.washer_operating_state: [
+            Map(Attribute.machine_state, "Washer Machine State", None, None, None, None),
+            Map(Attribute.washer_job_state, "Washer Job State", None, None, None, None),
+            Map(
             Attribute.completion_time,
             "Washer Completion Time",
             None,
             SensorDeviceClass.TIMESTAMP,
             None,
             None,
-        ),
-    ],
-    "custom.cooktopOperatingState": [
-        Map("cooktopOperatingState", "Cooktop Operating State", None, None, None, None)
-    ],
-    "remoteControlStatus": [
-        Map("remoteControlEnabled", "Remote Control", None, None, None, None)
-    ],
-    "samsungce.doorState": [Map("doorState", "Door State", None, None, None, None)],
-    "samsungce.kidsLock": [Map("lockState", "Kids Lock State", None, None, None, None)],
-    "samsungce.meatProbe": [
-        Map(
+            ),
+        ],
+        "custom.cooktopOperatingState": [
+            Map("cooktopOperatingState", "Cooktop Operating State", None, None, None, None)
+        ],
+        "remoteControlStatus": [
+            Map("remoteControlEnabled", "Remote Control", None, None, None, None)
+        ],
+        "samsungce.doorState": [Map("doorState", "Door State", None, None, None, None)],
+        "samsungce.kidsLock": [Map("lockState", "Kids Lock State", None, None, None, None)],
+        "samsungce.meatProbe": [
+            Map(
             "temperatureSetpoint",
             "Meat Probe Setpoint",
             None,
             SensorDeviceClass.TEMPERATURE,
             None,
             None,
-        ),
-        Map("status", "Meat Probe Status", None, None, None, None),
-    ],
-    "samsungce.softwareUpdate": [
-        Map(
+            ),
+            Map("status", "Meat Probe Status", None, None, None, None),
+        ],
+        "samsungce.softwareUpdate": [
+            Map(
             "newVersionAvailable",
             "Firmware Update Available",
             None,
             None,
             None,
             EntityCategory.DIAGNOSTIC,
-        ),
-    ],
-}
+            ),
+        ],
+    }
 
 
 THREE_AXIS_NAMES = ["X Coordinate", "Y Coordinate", "Z Coordinate"]
@@ -622,7 +619,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                     ]
                 )
             else:
-                maps = CAPABILITY_TO_SENSORS[capability]
+                maps = get_capability_sensors_map()[capability]
                 sensors.extend(
                     [
                         SmartThingsSensor(
@@ -681,8 +678,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
 def get_capabilities(capabilities: Sequence[str]) -> Sequence[str] | None:
     """Return all capabilities supported if minimum required are present."""
+    capability_map = get_capability_sensors_map()
     return [
-        capability for capability in CAPABILITY_TO_SENSORS if capability in capabilities
+        capability for capability in capability_map if capability in capabilities
     ]
 
 
@@ -816,8 +814,8 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
     def native_unit_of_measurement(self):
         """Return the unit this state is expressed in."""
         if self.report_name == "power":
-            return UnitOfPower.WATT
-        return UnitOfEnergy.KILO_WATT_HOUR
+            return "W"
+        return "kWh"
 
     @property
     def icon(self) -> str | None:
@@ -834,9 +832,8 @@ class SamsungOvenWarmingCenter(SmartThingsEntity, SensorEntity):
 
     def startup(self):
         """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute("mode/vs/0"))
-        asyncio.gather(*tasks)
+        if self.hass:
+            self.hass.async_create_task(self._device.execute("mode/vs/0"))
         self.init_bool = True
 
     @property
@@ -893,9 +890,8 @@ class SamsungOcfTemperatureSensor(SmartThingsEntity, SensorEntity):
 
     def startup(self):
         """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute(self._page))
-        asyncio.gather(*tasks)
+        if self.hass:
+            self.hass.async_create_task(self._device.execute(self._page))
 
     @property
     def name(self) -> str:
