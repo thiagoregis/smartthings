@@ -110,6 +110,13 @@ def get_webhook_url(hass: HomeAssistant) -> str:
     cloudhook_url = hass.data[DOMAIN][CONF_CLOUDHOOK_URL]
     if cloud.async_active_subscription(hass) and cloudhook_url is not None:
         return cloudhook_url
+    
+    # Try to use base_url if configured
+    base_url = hass.config.get('http', {}).get('base_url')
+    if base_url:
+        webhook_path = webhook.async_generate_path(hass.data[DOMAIN][CONF_WEBHOOK_ID])
+        return f"{base_url}{webhook_path}"
+    
     return webhook.async_generate_url(hass, hass.data[DOMAIN][CONF_WEBHOOK_ID])
 
 
