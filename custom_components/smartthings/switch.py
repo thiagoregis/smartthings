@@ -421,21 +421,26 @@ class SamsungOcfSwitch(SmartThingsEntity, SwitchEntity):
         """Return true if switch is on."""
         if not self.init_bool:
             self.startup()
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
+        attr = self._device.status.attributes.get(Attribute.data)
+        data = getattr(attr, "data", None) if attr else None
+        if not data or "href" not in data:
+            return self.execute_state  # Ou False, se preferir
+        if data["href"] == self._page:
             self.init_bool = True
-            output = self._device.status.attributes[Attribute.data].value["payload"][
-                self._key
-            ]
-            if len(self._on_value) > 1:
-                if self._on_value in output:
-                    self.execute_state = True
-                elif self._off_value in output:
-                    self.execute_state = False
-            else:
-                if self._on_value[0] in output:
-                    self.execute_state = True
-                elif self._off_value[0] in output:
-                    self.execute_state = False
+            value = getattr(attr, "value", {}) or {}
+            payload = value.get("payload", {})
+            output = payload.get(self._key, None)
+            if output is not None:
+                if isinstance(self._on_value, list) and len(self._on_value) > 1:
+                    if self._on_value in output:
+                        self.execute_state = True
+                    elif self._off_value in output:
+                        self.execute_state = False
+                else:
+                    if isinstance(self._on_value, list) and self._on_value and self._on_value[0] in output:
+                        self.execute_state = True
+                    elif isinstance(self._off_value, list) and self._off_value and self._off_value[0] in output:
+                        self.execute_state = False
         return self.execute_state
 
     @property
