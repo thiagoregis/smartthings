@@ -1,20 +1,38 @@
 {
-    "config": {
-        "abort": {
-            "no_available_locations": "N\u00e3o h\u00e1 Locais SmartThings dispon\u00edveis para configura\u00e7\u00e3o no Home Assistant."
+  "config": {
+    "abort": {
+      "invalid_webhook_url": "Home Assistant não está configurado corretamente para receber atualizações do SmartThings. O URL do webhook é inválido:\n> {webhook_url}\n\nPor favor, atualize sua configuração de acordo com as [instruções]({component_url}), reinicie o Home Assistant e tente novamente.",
+      "no_available_locations": "Não há Locais SmartThings disponíveis para configuração no Home Assistant."
+    },
+    "error": {
+      "app_setup_error": "Não é possível configurar o SmartApp. Por favor, tente novamente.",
+      "token_forbidden": "O token não possui os escopos necessários do OAuth.",
+      "token_invalid_format": "O token deve estar no formato UID / GUID",
+      "token_unauthorized": "O token é inválido ou não está mais autorizado.",
+      "webhook_error": "O SmartThings não pôde validar o URL do webhook. Certifique-se de que o URL do webhook é acessível da Internet e tente novamente."
+    },
+    "step": {
+      "authorize": {
+        "title": "Autorizar Home Assistant"
+      },
+      "pat": {
+        "data": {
+          "access_token": "[%key:common::config_flow::data::access_token%]"
         },
-        "error": {
-            "app_setup_error": "N\u00e3o \u00e9 poss\u00edvel configurar o SmartApp. Por favor, tente novamente.",
-            "token_forbidden": "O token n\u00e3o possui os escopos necess\u00e1rios do OAuth.",
-            "token_invalid_format": "O token deve estar no formato UID / GUID",
-            "token_unauthorized": "O token \u00e9 inv\u00e1lido ou n\u00e3o est\u00e1 mais autorizado.",
-            "webhook_error": "O SmartThings n\u00e3o p\u00f4de validar o terminal configurado em `base_url`. Por favor, revise os requisitos do componente."
+        "description": "Por favor, insira um SmartThings [Personal Access Token]({token_url}) que foi criado de acordo com as [instruções]({component_url}). Isso será usado para criar a integração do Home Assistant em sua conta SmartThings.",
+        "title": "Digite o token de acesso pessoal"
+      },
+      "select_location": {
+        "data": {
+          "location_id": "[%key:common::config_flow::data::location%]"
         },
-        "step": {
-            "user": {
-                "description": "Por favor, insira um SmartThings [Personal Access Token] ( {token_url} ) que foi criado de acordo com as [instru\u00e7\u00f5es] ( {component_url} ).",
-                "title": "Digite o token de acesso pessoal"
-            }
-        }
+        "description": "Por favor, selecione o Local SmartThings que deseja adicionar ao Home Assistant. Abriremos uma nova janela e pediremos para você fazer login e autorizar a instalação da integração do Home Assistant no local selecionado.",
+        "title": "Selecionar Local"
+      },
+      "user": {
+        "description": "O SmartThings será configurado para enviar atualizações por push para o Home Assistant em:\n> {webhook_url}\n\nSe isso não estiver correto, atualize sua configuração, reinicie o Home Assistant e tente novamente.",
+        "title": "Confirmar URL de Callback"
+      }
     }
+  }
 }

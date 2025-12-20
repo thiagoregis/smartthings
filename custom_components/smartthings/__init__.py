@@ -50,6 +50,19 @@ from .smartapp import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_PLATFORM_MODULES_CACHE = {}
+
+
+def _get_platform_module(platform: str):
+    """Get a platform module, with caching."""
+    if platform not in _PLATFORM_MODULES_CACHE:
+        try:
+            _PLATFORM_MODULES_CACHE[platform] = importlib.import_module(
+                f".{platform}", __name__
+            )
+        except ImportError:
+            _PLATFORM_MODULES_CACHE[platform] = None
+    return _PLATFORM_MODULES_CACHE[platform]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -288,9 +301,9 @@ class DeviceBroker:
             capabilities = device.capabilities.copy()
             slots = {}
             for platform in PLATFORMS:
-                platform_module = importlib.import_module(
-                    f".{platform}", self.__module__
-                )
+                platform_module = _get_platform_module(platform)
+                if platform_module is None:
+                    continue
                 if not hasattr(platform_module, "get_capabilities"):
                     continue
                 assigned = platform_module.get_capabilities(capabilities)
