@@ -827,14 +827,18 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
 class SamsungOvenWarmingCenter(SmartThingsEntity, SensorEntity):
     """Define Samsung Cooktop Warming Center Sensor"""
 
-    execute_state = "Off"
-    init_bool = False
+    def __init__(self, device: DeviceEntity) -> None:
+        """Init the class."""
+        super().__init__(device)
+        self.execute_state = "Off"
+        self.init_bool = False
+        self._request_sent = False
 
     def startup(self):
         """Make sure that OCF page visits mode on startup"""
-        if self.hass:
+        if self.hass and not self._request_sent:
             self.hass.async_create_task(self._device.execute("mode/vs/0"))
-        self.init_bool = True
+            self._request_sent = True
 
     @property
     def name(self) -> str:
@@ -851,7 +855,8 @@ class SamsungOvenWarmingCenter(SmartThingsEntity, SensorEntity):
         """Return the state of the sensor."""
         if not self.init_bool:
             self.startup()
-        output = json.dumps(self._device.status.attributes[Attribute.data].value)
+        
+        output = json.dumps(self._device.status.attributes[Attribute.data].value or {})
 
         if "WarmingCenter_High" in output:
             self.execute_state = "High"
@@ -861,6 +866,9 @@ class SamsungOvenWarmingCenter(SmartThingsEntity, SensorEntity):
             self.execute_state = "Low"
         elif "WarmingCenter_Off" in output:
             self.execute_state = "Off"
+            
+        if self.execute_state != "Off":
+            self.init_bool = True
         return self.execute_state
 
     @property
@@ -873,10 +881,6 @@ class SamsungOvenWarmingCenter(SmartThingsEntity, SensorEntity):
 class SamsungOcfTemperatureSensor(SmartThingsEntity, SensorEntity):
     """Define Samsung OCF Temperature Sensor"""
 
-    execute_state = 0
-    unit_state = ""
-    init_bool = False
-
     def __init__(
         self,
         device: DeviceEntity,
@@ -887,11 +891,16 @@ class SamsungOcfTemperatureSensor(SmartThingsEntity, SensorEntity):
         super().__init__(device)
         self._name = name
         self._page = page
+        self.execute_state = 0
+        self.unit_state = ""
+        self.init_bool = False
+        self._request_sent = False
 
     def startup(self):
         """Make sure that OCF page visits mode on startup"""
-        if self.hass:
+        if self.hass and not self._request_sent:
             self.hass.async_create_task(self._device.execute(self._page))
+            self._request_sent = True
 
     @property
     def name(self) -> str:
@@ -916,6 +925,7 @@ class SamsungOcfTemperatureSensor(SmartThingsEntity, SensorEntity):
 
         if self._device.status.attributes[Attribute.data].data["href"] == self._page:
             self.init_bool = True
+            self._request_sent = False
             self.execute_state = int(
                 self._device.status.attributes[Attribute.data].value["payload"][
                     "temperature"
