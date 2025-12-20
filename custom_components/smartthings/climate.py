@@ -489,21 +489,14 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
     @property
     def swing_modes(self):
         """Give all swing modes, if attribute is found it most likely works. Samsung gives null, work-around"""
-        if (
-            self._device.status.attributes["supportedFanOscillationModes"].value
-            is not None
-        ):
-            fan_oscillation_modes = [
-                str(x)
-                for x in self._device.status.attributes[
-                    "supportedFanOscillationModes"
-                ].value
-            ]
-            return fan_oscillation_modes
-        elif self._device.status.attributes["fanOscillationMode"].value is not None:
+        supported_modes = self._device.status.attributes["supportedFanOscillationModes"].value
+        if supported_modes:
+            return [str(x) for x in supported_modes]
+
+        if self._device.status.attributes["fanOscillationMode"].value is not None:
             return ["fixed", "all", "vertical", "horizontal"]
-        else:
-            return None
+
+        return None
 
     @property
     def preset_mode(self):
