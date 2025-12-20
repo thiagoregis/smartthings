@@ -53,20 +53,29 @@ _LOGGER = logging.getLogger(__name__)
 _PLATFORM_MODULES_CACHE = {}
 
 
-def _get_platform_module(platform: str):
-    """Get a platform module, with caching."""
-    if platform not in _PLATFORM_MODULES_CACHE:
+def _init_platform_modules():
+    """Initialize platform modules cache at startup."""
+    global _PLATFORM_MODULES_CACHE
+    if _PLATFORM_MODULES_CACHE:
+        return  # Already initialized
+    
+    for platform in PLATFORMS:
         try:
             _PLATFORM_MODULES_CACHE[platform] = importlib.import_module(
                 f".{platform}", __name__
             )
         except ImportError:
             _PLATFORM_MODULES_CACHE[platform] = None
-    return _PLATFORM_MODULES_CACHE[platform]
+
+
+def _get_platform_module(platform: str):
+    """Get a platform module from cache."""
+    return _PLATFORM_MODULES_CACHE.get(platform)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Initialize the SmartThings platform."""
+    _init_platform_modules()
     await setup_smartapp_endpoint(hass)
     return True
 

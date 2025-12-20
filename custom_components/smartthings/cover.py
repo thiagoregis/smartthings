@@ -7,30 +7,22 @@ from pysmartthings import Attribute, Capability
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
-    CoverDeviceClass,  # Nuovo
-    CoverEntityFeature,  # Nuovo
+    CoverDeviceClass,
+    CoverEntityFeature,
     DOMAIN as COVER_DOMAIN,
-    STATE_CLOSED,
-    STATE_CLOSING,
-    STATE_OPEN,
-    STATE_OPENING,
     CoverEntity,
 )
-
-# Sostituire le vecchie costanti
-DEVICE_CLASS_DOOR = CoverDeviceClass.DOOR
-DEVICE_CLASS_GARAGE = CoverDeviceClass.GARAGE
-DEVICE_CLASS_SHADE = CoverDeviceClass.SHADE
-
-# Sostituire i supporti
-SUPPORT_OPEN = CoverEntityFeature.OPEN
-SUPPORT_CLOSE = CoverEntityFeature.CLOSE
-SUPPORT_SET_POSITION = CoverEntityFeature.SET_POSITION
 
 from homeassistant.const import ATTR_BATTERY_LEVEL
 
 from . import SmartThingsEntity
 from .const import DATA_BROKERS, DOMAIN
+
+# State constants (not exported by Home Assistant anymore)
+STATE_CLOSED = "closed"
+STATE_CLOSING = "closing"
+STATE_OPEN = "open"
+STATE_OPENING = "opening"
 
 VALUE_TO_STATE = {
     "closed": STATE_CLOSED,
@@ -79,9 +71,9 @@ class SmartThingsCover(SmartThingsEntity, CoverEntity):
         self._device_class = None
         self._state = None
         self._state_attrs = None
-        self._supported_features = SUPPORT_OPEN | SUPPORT_CLOSE
+        self._supported_features = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE
         if Capability.switch_level in device.capabilities:
-            self._supported_features |= SUPPORT_SET_POSITION
+            self._supported_features |= CoverEntityFeature.SET_POSITION
 
     async def async_close_cover(self, **kwargs):
         """Close cover."""
