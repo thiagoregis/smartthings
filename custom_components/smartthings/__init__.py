@@ -342,6 +342,7 @@ class DeviceBroker:
                 data={
                     **self._entry.data,
                     CONF_REFRESH_TOKEN: self._token.refresh_token,
+                    CONF_ACCESS_TOKEN: self._token.access_token,
                 },
             )
             _LOGGER.debug(
