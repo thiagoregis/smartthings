@@ -203,13 +203,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         CONF_ACCESS_TOKEN: token.access_token,
                     },
                 )
-                raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
             except Exception:
                 _LOGGER.exception(
                     "Unable to setup configuration entry '%s' - please reconfigure the integration",
                     entry.title,
                 )
                 remove_entry = True
+            else:
+                raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
         else:
             _LOGGER.debug(ex, exc_info=True)
             raise ConfigEntryNotReady from ex
