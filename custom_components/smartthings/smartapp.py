@@ -11,6 +11,7 @@ from aiohttp.client_exceptions import ClientResponseError
 from aiohttp import web
 from pysmartapp import Dispatcher, SmartAppManager
 from pysmartapp.const import SETTINGS_APP_ID
+from pysmartapp.errors import SmartAppNotRegisteredError
 from pysmartthings import (
     APP_TYPE_WEBHOOK,
     CLASSIFICATION_AUTOMATION,
@@ -534,5 +535,12 @@ async def smartapp_webhook(hass: HomeAssistant, webhook_id: str, request):
     """
     manager = hass.data[DOMAIN][DATA_MANAGER]
     data = await request.json()
-    result = await manager.handle_request(data, request.headers)
+    try:
+        result = await manager.handle_request(data, request.headers)
+    except SmartAppNotRegisteredError as err:
+        _LOGGER.warning(
+            "Received webhook for unregistered app. This usually happens during initialization or if the integration was removed: %s",
+            err,
+        )
+        return web.Response(status=HTTPStatus.NOT_FOUND)
     return web.json_response(result)
