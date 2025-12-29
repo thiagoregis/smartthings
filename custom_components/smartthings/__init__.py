@@ -122,21 +122,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     remove_entry = False
     try:
-        # Get SmartApp token to sync subscriptions
-        token = await api.generate_tokens(
-            entry.data[CONF_CLIENT_ID],
-            entry.data[CONF_CLIENT_SECRET],
-            entry.data[CONF_REFRESH_TOKEN],
-        )
-        hass.config_entries.async_update_entry(
-            entry,
-            data={
-                **entry.data,
-                CONF_REFRESH_TOKEN: token.refresh_token,
-                CONF_ACCESS_TOKEN: token.access_token,
-            },
-        )
-        api = SmartThings(async_get_clientsession(hass), token.access_token)
+        # Check if the token is valid and get the app
+        app = await api.app(entry.data[CONF_APP_ID])
 
         # See if the app is already setup. This occurs when there are
         # installs in multiple SmartThings locations (valid use-case)
@@ -144,7 +131,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         smart_app = manager.smartapps.get(entry.data[CONF_APP_ID])
         if not smart_app:
             # Validate and setup the app.
-            app = await api.app(entry.data[CONF_APP_ID])
             smart_app = setup_smartapp(hass, app)
 
         # Validate and retrieve the installed app.
@@ -188,11 +174,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     except ClientResponseError as ex:
         if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
-            _LOGGER.exception(
-                "Unable to setup configuration entry '%s' - please reconfigure the integration",
-                entry.title,
-            )
-            remove_entry = True
+            try:
+                token = await api.generate_tokens(
+                    entry.data[CONF_CLIENT_ID],
+                    entry.data[CONF_CLIENT_SECRET],
+                    entry.data[CONF_REFRESH_TOKEN],
+                )
+                hass.config_entries.async_update_entry(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_REFRESH_TOKEN: token.refresh_token,
+                        CONF_ACCESS_TOKEN: token.access_token,
+                    },
+                )
+                raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
+            except Exception:
+                _LOGGER.exception(
+                    "Unable to setup configuration entry '%s' - please reconfigure the integration",
+                    entry.title,
+                )
+                remove_entry = True
         else:
             _LOGGER.debug(ex, exc_info=True)
             raise ConfigEntryNotReady from ex
