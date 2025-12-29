@@ -122,6 +122,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     remove_entry = False
     try:
+        # Get SmartApp token to sync subscriptions
+        token = await api.generate_tokens(
+            entry.data[CONF_CLIENT_ID],
+            entry.data[CONF_CLIENT_SECRET],
+            entry.data[CONF_REFRESH_TOKEN],
+        )
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_REFRESH_TOKEN: token.refresh_token,
+                CONF_ACCESS_TOKEN: token.access_token,
+            },
+        )
+        api = SmartThings(async_get_clientsession(hass), token.access_token)
+
         # See if the app is already setup. This occurs when there are
         # installs in multiple SmartThings locations (valid use-case)
         manager = hass.data[DOMAIN][DATA_MANAGER]
@@ -138,16 +154,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Get scenes
         scenes = await async_get_entry_scenes(entry, api)
-
-        # Get SmartApp token to sync subscriptions
-        token = await api.generate_tokens(
-            entry.data[CONF_CLIENT_ID],
-            entry.data[CONF_CLIENT_SECRET],
-            entry.data[CONF_REFRESH_TOKEN],
-        )
-        hass.config_entries.async_update_entry(
-            entry, data={**entry.data, CONF_REFRESH_TOKEN: token.refresh_token}
-        )
 
         # Get devices and their current status
         devices = await api.devices(location_ids=[installed_app.location_id])
