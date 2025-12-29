@@ -20,7 +20,7 @@ from pysmartthings.device import DeviceEntity
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_CLIENT_ID, CONF_CLIENT_SECRET
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
@@ -166,13 +166,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 status = getattr(ex, "status", None)
                 if status == HTTPStatus.UNAUTHORIZED:
                     raise
-                _LOGGER.debug(
-                    "Unable to update status for device: %s (%s), the device will be excluded",
+                _LOGGER.warning(
+                    "Unable to update status for device: %s (%s): %s",
                     device.label,
                     device.device_id,
-                    exc_info=True,
+                    ex,
                 )
-                devices.remove(device)
 
         await asyncio.gather(*(retrieve_device_status(d) for d in devices.copy()))
 
@@ -192,31 +191,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     except (ClientResponseError, APIResponseError) as ex:
         status = getattr(ex, "status", None)
-        if status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
-            new_token = None
+        if status == HTTPStatus.FORBIDDEN:
+            _LOGGER.error("Token lacks required permissions (scopes). Please re-authenticate.")
+            raise ConfigEntryAuthFailed from ex
+        
+        if status == HTTPStatus.UNAUTHORIZED:
             try:
-                new_token = await api.generate_tokens(
+                await token.refresh(
                     entry.data[CONF_CLIENT_ID],
                     entry.data[CONF_CLIENT_SECRET],
-                    entry.data[CONF_REFRESH_TOKEN],
                 )
+                hass.config_entries.async_update_entry(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_REFRESH_TOKEN: token.refresh_token,
+                        CONF_ACCESS_TOKEN: token.access_token,
+                    },
+                )
+                raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
+            except ConfigEntryNotReady:
+                raise
             except Exception:
                 _LOGGER.exception(
                     "Unable to setup configuration entry '%s' - please reconfigure the integration",
                     entry.title,
                 )
                 remove_entry = True
-            
-            if new_token:
-                hass.config_entries.async_update_entry(
-                    entry,
-                    data={
-                        **entry.data,
-                        CONF_REFRESH_TOKEN: new_token.refresh_token,
-                        CONF_ACCESS_TOKEN: new_token.access_token,
-                    },
-                )
-                raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
         else:
             _LOGGER.debug(ex, exc_info=True)
             raise ConfigEntryNotReady from ex

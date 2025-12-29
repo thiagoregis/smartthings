@@ -12,6 +12,7 @@ from aiohttp import web
 from pysmartapp import Dispatcher, SmartAppManager
 from pysmartapp.const import SETTINGS_APP_ID
 from pysmartapp.errors import SmartAppNotRegisteredError
+from pysmartthings import APIResponseError
 from pysmartthings import (
     APP_TYPE_WEBHOOK,
     CLASSIFICATION_AUTOMATION,
@@ -409,7 +410,14 @@ async def smartapp_sync_subscriptions(
     )
 
     # Get current subscriptions and find differences
-    subscriptions = await api.subscriptions(installed_app_id)
+    try:
+        subscriptions = await api.subscriptions(installed_app_id)
+    except (ClientResponseError, APIResponseError) as ex:
+        if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+            _LOGGER.warning("Could not list subscriptions, skipping sync: %s", ex)
+            return
+        raise
+
     for subscription in subscriptions:
         if subscription.capability in capabilities:
             capabilities.remove(subscription.capability)
