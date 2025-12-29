@@ -543,4 +543,7 @@ async def smartapp_webhook(hass: HomeAssistant, webhook_id: str, request):
             err,
         )
         return web.Response(status=HTTPStatus.NOT_FOUND)
+    except Exception:
+        _LOGGER.exception("Unexpected error handling webhook")
+        return web.Response(status=HTTPStatus.INTERNAL_SERVER_ERROR)
     return web.json_response(result)
