@@ -1,11 +1,13 @@
 """SmartApp functionality to receive cloud-push notifications."""
 import asyncio
 import functools
+from http import HTTPStatus
 import logging
 import secrets
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from aiohttp.client_exceptions import ClientResponseError
 from aiohttp import web
 from pysmartapp import Dispatcher, SmartAppManager
 from pysmartapp.const import SETTINGS_APP_ID
@@ -337,6 +339,9 @@ async def smartapp_sync_subscriptions(
             _LOGGER.debug(
                 "Created subscription for '%s' under app '%s'", target, installed_app_id
             )
+        except ClientResponseError as ex:
+            if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+                raise
         except Exception as error:  # pylint:disable=broad-except
             _LOGGER.error(
                 "Failed to create subscription for '%s' under app '%s': %s",
@@ -353,6 +358,9 @@ async def smartapp_sync_subscriptions(
                 sub.capability,
                 installed_app_id,
             )
+        except ClientResponseError as ex:
+            if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+                raise
         except Exception as error:  # pylint:disable=broad-except
             _LOGGER.error(
                 "Failed to remove subscription for '%s' under app '%s': %s",

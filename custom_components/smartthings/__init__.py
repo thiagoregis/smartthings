@@ -162,7 +162,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async def retrieve_device_status(device):
             try:
                 await device.status.refresh()
-            except ClientResponseError:
+            except ClientResponseError as ex:
+                if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+                    raise
                 _LOGGER.debug(
                     "Unable to update status for device: %s (%s), the device will be excluded",
                     device.label,
