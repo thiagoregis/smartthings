@@ -189,19 +189,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     except ClientResponseError as ex:
         if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+            new_token = None
             try:
-                token = await api.generate_tokens(
+                new_token = await api.generate_tokens(
                     entry.data[CONF_CLIENT_ID],
                     entry.data[CONF_CLIENT_SECRET],
                     entry.data[CONF_REFRESH_TOKEN],
-                )
-                hass.config_entries.async_update_entry(
-                    entry,
-                    data={
-                        **entry.data,
-                        CONF_REFRESH_TOKEN: token.refresh_token,
-                        CONF_ACCESS_TOKEN: token.access_token,
-                    },
                 )
             except Exception:
                 _LOGGER.exception(
@@ -209,7 +202,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     entry.title,
                 )
                 remove_entry = True
-            else:
+            
+            if new_token:
+                hass.config_entries.async_update_entry(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_REFRESH_TOKEN: new_token.refresh_token,
+                        CONF_ACCESS_TOKEN: new_token.access_token,
+                    },
+                )
                 raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
         else:
             _LOGGER.debug(ex, exc_info=True)
