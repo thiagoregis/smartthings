@@ -13,7 +13,7 @@ from aiohttp.client_exceptions import ClientConnectionError, ClientResponseError
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=UserWarning, message=".*pkg_resources is deprecated.*")
     from pysmartapp.event import EVENT_TYPE_DEVICE
-    from pysmartthings import Attribute, Capability, OAuthToken, SmartThings
+    from pysmartthings import APIResponseError, Attribute, Capability, OAuthToken, SmartThings
 
 from pysmartthings.device import DeviceEntity
 
@@ -162,8 +162,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async def retrieve_device_status(device):
             try:
                 await device.status.refresh()
-            except ClientResponseError as ex:
-                if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+            except (ClientResponseError, APIResponseError) as ex:
+                status = getattr(ex, "status", None)
+                if status == HTTPStatus.UNAUTHORIZED:
                     raise
                 _LOGGER.debug(
                     "Unable to update status for device: %s (%s), the device will be excluded",
@@ -189,8 +190,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         broker.connect()
         hass.data[DOMAIN][DATA_BROKERS][entry.entry_id] = broker
 
-    except ClientResponseError as ex:
-        if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+    except (ClientResponseError, APIResponseError) as ex:
+        status = getattr(ex, "status", None)
+        if status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
             new_token = None
             try:
                 new_token = await api.generate_tokens(

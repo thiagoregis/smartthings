@@ -340,7 +340,7 @@ async def smartapp_sync_subscriptions(
                 "Created subscription for '%s' under app '%s'", target, installed_app_id
             )
         except ClientResponseError as ex:
-            if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+            if ex.status == HTTPStatus.UNAUTHORIZED:
                 raise
         except Exception as error:  # pylint:disable=broad-except
             _LOGGER.error(
@@ -359,7 +359,7 @@ async def smartapp_sync_subscriptions(
                 installed_app_id,
             )
         except ClientResponseError as ex:
-            if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+            if ex.status == HTTPStatus.UNAUTHORIZED:
                 raise
         except Exception as error:  # pylint:disable=broad-except
             _LOGGER.error(
