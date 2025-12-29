@@ -120,7 +120,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     api = SmartThings(async_get_clientsession(hass), entry.data[CONF_ACCESS_TOKEN])
     token = OAuthToken(
-        api, entry.data[CONF_ACCESS_TOKEN], entry.data[CONF_REFRESH_TOKEN]
+        api,
+        {
+            "access_token": entry.data[CONF_ACCESS_TOKEN],
+            "refresh_token": entry.data[CONF_REFRESH_TOKEN],
+        },
     )
 
     remove_entry = False
