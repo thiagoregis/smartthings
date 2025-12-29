@@ -9,7 +9,7 @@ import logging
 
 from aiohttp.client_exceptions import ClientConnectionError, ClientResponseError
 from pysmartapp.event import EVENT_TYPE_DEVICE
-from pysmartthings import Attribute, Capability, SmartThings
+from pysmartthings import Attribute, Capability, OAuthToken, SmartThings
 from pysmartthings.device import DeviceEntity
 
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
@@ -119,6 +119,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     api = SmartThings(async_get_clientsession(hass), entry.data[CONF_ACCESS_TOKEN])
+    token = OAuthToken(
+        api, entry.data[CONF_ACCESS_TOKEN], entry.data[CONF_REFRESH_TOKEN]
+    )
 
     remove_entry = False
     try:
