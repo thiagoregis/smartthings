@@ -6,10 +6,15 @@ from collections.abc import Iterable
 from http import HTTPStatus
 import importlib
 import logging
+import warnings
 
 from aiohttp.client_exceptions import ClientConnectionError, ClientResponseError
-from pysmartapp.event import EVENT_TYPE_DEVICE
-from pysmartthings import Attribute, Capability, OAuthToken, SmartThings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=UserWarning, message=".*pkg_resources is deprecated.*")
+    from pysmartapp.event import EVENT_TYPE_DEVICE
+    from pysmartthings import Attribute, Capability, OAuthToken, SmartThings
+
 from pysmartthings.device import DeviceEntity
 
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
@@ -75,7 +80,7 @@ def _get_platform_module(platform: str):
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Initialize the SmartThings platform."""
-    _init_platform_modules()
+    await hass.async_add_executor_job(_init_platform_modules)
     await setup_smartapp_endpoint(hass)
     return True
 
@@ -124,6 +129,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         {
             "access_token": entry.data[CONF_ACCESS_TOKEN],
             "refresh_token": entry.data[CONF_REFRESH_TOKEN],
+            "token_type": "Bearer",
+            "expires_in": 0,
+            "scope": "auto",
         },
     )
 
