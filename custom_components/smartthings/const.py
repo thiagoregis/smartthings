@@ -12,7 +12,39 @@ from homeassistant.const import (
 DOMAIN = "smartthings"
 
 APP_OAUTH_CLIENT_NAME = "Home Assistant"
-APP_OAUTH_SCOPES = ["r:devices:*", "x:devices:*", "r:scenes:*", "x:scenes:*"]
+APP_OAUTH_SCOPES = [
+    "r:locations:*",
+    "w:customcapability",
+    "x:rules:*",
+    "r:customcapability",
+    "w:rules:*",
+    "w:installedapps:*",
+    "r:installedapps:*",
+    "r:schedules",
+    "w:deviceprofiles",
+    "r:rules:*",
+    "x:devices:*",
+    "l:devices",
+    "w:locations:*",
+    "x:locations:*",
+    "r:channels:*",
+    "r:deviceprofiles",
+    "w:invitations",
+    "l:installedapps",
+    "r:scenes:*",
+    "w:schedules",
+    "x:notifications:*",
+    "x:scenes:*",
+    "w:channels:*",
+    "r:invitations",
+    "r:drivers:*",
+    "r:devices:*",
+    "w:devices:*",
+    "w:drivers:*",
+    "l:scenes",
+    "r:apps:*",
+    "w:apps:*",
+]
 APP_NAME_PREFIX = "homeassistant."
 
 CONF_APP_ID = "app_id"
