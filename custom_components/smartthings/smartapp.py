@@ -29,6 +29,7 @@ from pysmartthings import (
 from homeassistant.components import webhook, cloud
 from homeassistant.const import CONF_WEBHOOK_ID
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
@@ -343,7 +344,7 @@ async def smartapp_sync_subscriptions(
             )
         except ClientResponseError as ex:
             if ex.status == HTTPStatus.UNAUTHORIZED:
-                raise
+                raise ConfigEntryAuthFailed(ex) from ex
         except Exception as error:  # pylint:disable=broad-except
             _LOGGER.error(
                 "Failed to create subscription for '%s' under app '%s': %s",
@@ -362,7 +363,7 @@ async def smartapp_sync_subscriptions(
             )
         except ClientResponseError as ex:
             if ex.status == HTTPStatus.UNAUTHORIZED:
-                raise
+                raise ConfigEntryAuthFailed(ex) from ex
         except Exception as error:  # pylint:disable=broad-except
             _LOGGER.error(
                 "Failed to remove subscription for '%s' under app '%s': %s",
@@ -414,8 +415,7 @@ async def smartapp_sync_subscriptions(
         subscriptions = await api.subscriptions(installed_app_id)
     except (ClientResponseError, APIResponseError) as ex:
         if ex.status in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
-            _LOGGER.warning("Could not list subscriptions, skipping sync: %s", ex)
-            return
+            raise ConfigEntryAuthFailed(ex) from ex
         raise
 
     for subscription in subscriptions:
