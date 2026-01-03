@@ -50,6 +50,7 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self.installed_app_id = None
         self.refresh_token = None
         self.location_id = None
+        self.entry = None
 
     async def async_step_import(self, user_input=None):
         """Occurs when a previously entry setup fails and is re-initiated."""
@@ -78,6 +79,11 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Show the next screen
+        return await self.async_step_pat()
+
+    async def async_step_reauth(self, entry_data):
+        """Handle configuration by re-auth."""
+        self.entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         return await self.async_step_pat()
 
     async def async_step_pat(self, user_input=None):
@@ -240,5 +246,15 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         location = await self.api.location(data[CONF_LOCATION_ID])
+
+        if self.source == config_entries.SOURCE_REAUTH:
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data=data,
+            )
+            self.hass.async_create_task(
+                self.hass.config_entries.async_reload(self.entry.entry_id)
+            )
+            return self.async_abort(reason="reauth_successful")
 
         return self.async_create_entry(title=location.name, data=data)
