@@ -14,11 +14,26 @@ DOMAIN = "smartthings"
 APP_OAUTH_CLIENT_NAME = "Home Assistant"
 APP_OAUTH_SCOPES = [
     "r:locations:*",
+    "x:rules:*",
+    "r:customcapability",
+    "w:rules:*",
+    "w:installedapps:*",
+    "r:installedapps:*",
+    "r:schedules",
+    "r:rules:*",
     "x:devices:*",
+    "l:devices",
+    "w:locations:*",
+    "x:locations:*",
+    "r:deviceprofiles",
+    "l:installedapps",
     "r:scenes:*",
+    "w:schedules",
+    "x:notifications:*",
     "x:scenes:*",
     "r:devices:*",
     "w:devices:*",
+    "l:scenes",
 ]
 APP_NAME_PREFIX = "homeassistant."
 
