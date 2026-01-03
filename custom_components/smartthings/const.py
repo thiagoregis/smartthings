@@ -22,18 +22,15 @@ APP_OAUTH_SCOPES = [
     "r:schedules",
     "r:rules:*",
     "x:devices:*",
-    "l:devices",
     "w:locations:*",
     "x:locations:*",
     "r:deviceprofiles",
-    "l:installedapps",
     "r:scenes:*",
     "w:schedules",
     "x:notifications:*",
     "x:scenes:*",
     "r:devices:*",
     "w:devices:*",
-    "l:scenes",
 ]
 APP_NAME_PREFIX = "homeassistant."
 
