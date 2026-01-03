@@ -100,6 +100,13 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if app:
                 await app.refresh()  # load all attributes
                 await update_app(self.hass, app)
+
+                # Update OAuth scopes
+                app_oauth = AppOAuth(app.app_id)
+                app_oauth.client_name = APP_OAUTH_CLIENT_NAME
+                app_oauth.scope.extend(APP_OAUTH_SCOPES)
+                await self.api.update_app_oauth(app_oauth)
+
                 # Find an existing entry to copy the oauth client
                 existing = next(
                     (
