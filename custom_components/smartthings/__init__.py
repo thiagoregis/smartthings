@@ -150,109 +150,107 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Validate and retrieve the installed app.
         installed_app = await validate_installed_app(
-            remove_entry = False
+            api, entry.data[CONF_INSTALLED_APP_ID]
+        )
+
+        # Get scenes
+        scenes = await async_get_entry_scenes(entry, api)
+
+        # Get devices and their current status
+        devices = await api.devices(location_ids=[installed_app.location_id])
+
+        async def retrieve_device_status(device):
             try:
-                # Check if the token is valid and get the app
-                app = await api.app(entry.data[CONF_APP_ID])
-
-                # See if the app is already setup. This occurs when there are
-                # installs in multiple SmartThings locations (valid use-case)
-                manager = hass.data[DOMAIN][DATA_MANAGER]
-                smart_app = manager.smartapps.get(entry.data[CONF_APP_ID])
-                if not smart_app:
-                    # Validate and setup the app.
-                    smart_app = setup_smartapp(hass, app)
-
-                # Validate and retrieve the installed app.
-                installed_app = await validate_installed_app(
-                    api, entry.data[CONF_INSTALLED_APP_ID]
-                )
-
-                # Get scenes
-                scenes = await async_get_entry_scenes(entry, api)
-
-                # Get devices and their current status
-                devices = await api.devices(location_ids=[installed_app.location_id])
-
-                async def retrieve_device_status(device):
-                    try:
-                        await device.status.refresh()
-                    except (ClientResponseError, APIResponseError) as ex:
-                        status = getattr(ex, "status", None)
-                        if status == HTTPStatus.UNAUTHORIZED:
-                            raise
-                        _LOGGER.warning(
-                            "Unable to update status for device: %s (%s): %s",
-                            device.label,
-                            device.device_id,
-                            ex,
-                        )
-
-                await asyncio.gather(*(retrieve_device_status(d) for d in devices.copy()))
-
-                # Sync device subscriptions
-                await smartapp_sync_subscriptions(
-                    hass,
-                    token.access_token,
-                    installed_app.location_id,
-                    installed_app.installed_app_id,
-                    devices,
-                )
-
-                # Setup device broker
-                broker = DeviceBroker(hass, entry, token, smart_app, devices, scenes)
-                broker.connect()
-                hass.data[DOMAIN][DATA_BROKERS][entry.entry_id] = broker
-
+                await device.status.refresh()
             except (ClientResponseError, APIResponseError) as ex:
                 status = getattr(ex, "status", None)
-                if status == HTTPStatus.FORBIDDEN:
-                    _LOGGER.error("Token lacks required permissions (scopes). Por favor, refaça a autenticação pelo Home Assistant.")
-                    raise ConfigEntryAuthFailed from ex
-        
                 if status == HTTPStatus.UNAUTHORIZED:
-                    _LOGGER.warning("Access token expirado ou inválido. Tentando renovar usando refresh token...")
-                    try:
-                        await token.refresh(
-                            entry.data[CONF_CLIENT_ID],
-                            entry.data[CONF_CLIENT_SECRET],
-                        )
-                        hass.config_entries.async_update_entry(
-                            entry,
-                            data={
-                                **entry.data,
-                                CONF_REFRESH_TOKEN: token.refresh_token,
-                                CONF_ACCESS_TOKEN: token.access_token,
-                            },
-                        )
-                        _LOGGER.info("Token renovado com sucesso usando refresh token.")
-                        raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
-                    except ConfigEntryNotReady:
-                        raise
-                    except Exception as err:
-                        _LOGGER.error(
-                            "Falha ao renovar o token automaticamente. Será necessário refazer a autenticação pelo Home Assistant. Erro: %s",
-                            err,
-                        )
-                        remove_entry = True
-                else:
-                    _LOGGER.debug(ex, exc_info=True)
-                    raise ConfigEntryNotReady from ex
-            except (ClientConnectionError, RuntimeWarning) as ex:
-                _LOGGER.debug(ex, exc_info=True)
-                raise ConfigEntryNotReady from ex
+                    raise
+                _LOGGER.warning(
+                    "Unable to update status for device: %s (%s): %s",
+                    device.label,
+                    device.device_id,
+                    ex,
+                )
 
-            if remove_entry:
-                hass.async_create_task(hass.config_entries.async_remove(entry.entry_id))
-                # only create new flow if there isn't a pending one for SmartThings.
-                if not hass.config_entries.flow.async_progress_by_handler(DOMAIN):
-                    hass.async_create_task(
-                        hass.config_entries.flow.async_init(
-                            DOMAIN, context={"source": SOURCE_REAUTH}, data=entry.data
-                        )
-                    )
+        await asyncio.gather(*(retrieve_device_status(d) for d in devices.copy()))
 
-            return not remove_entry
+        # Sync device subscriptions
+        await smartapp_sync_subscriptions(
+            hass,
+            token.access_token,
+            installed_app.location_id,
+            installed_app.installed_app_id,
+            devices,
+        )
+
+        # Setup device broker
+        broker = DeviceBroker(hass, entry, token, smart_app, devices, scenes)
+        broker.connect()
+        hass.data[DOMAIN][DATA_BROKERS][entry.entry_id] = broker
+
+    except (ClientResponseError, APIResponseError) as ex:
+        status = getattr(ex, "status", None)
+        if status == HTTPStatus.FORBIDDEN:
+            _LOGGER.error("Token lacks required permissions (scopes). Please re-authenticate.")
+            raise ConfigEntryAuthFailed from ex
+        
+        if status == HTTPStatus.UNAUTHORIZED:
+            try:
+                await token.refresh(
+                    entry.data[CONF_CLIENT_ID],
+                    entry.data[CONF_CLIENT_SECRET],
+                )
+                hass.config_entries.async_update_entry(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_REFRESH_TOKEN: token.refresh_token,
+                        CONF_ACCESS_TOKEN: token.access_token,
+                    },
+                )
+                raise ConfigEntryNotReady("Token refreshed, retrying setup") from ex
+            except ConfigEntryNotReady:
+                raise
+            except Exception:
+                _LOGGER.exception(
+                    "Unable to setup configuration entry '%s' - please reconfigure the integration",
+                    entry.title,
+                )
+                remove_entry = True
+        else:
+            _LOGGER.debug(ex, exc_info=True)
+            raise ConfigEntryNotReady from ex
+    except (ClientConnectionError, RuntimeWarning) as ex:
+        _LOGGER.debug(ex, exc_info=True)
+        raise ConfigEntryNotReady from ex
+
+    if remove_entry:
+        hass.async_create_task(hass.config_entries.async_remove(entry.entry_id))
+        # only create new flow if there isn't a pending one for SmartThings.
+        if not hass.config_entries.flow.async_progress_by_handler(DOMAIN):
+            hass.async_create_task(
+                hass.config_entries.flow.async_init(
+                    DOMAIN, context={"source": SOURCE_IMPORT}
+                )
+            )
+        return False
+
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    )
+    return True
+
+
+async def async_get_entry_scenes(entry: ConfigEntry, api):
+    """Get the scenes within an integration."""
+    try:
+        return await api.scenes(location_id=entry.data[CONF_LOCATION_ID])
+    except ClientResponseError as ex:
+        if ex.status == HTTPStatus.FORBIDDEN:
+            _LOGGER.exception(
+                "Unable to load scenes for configuration entry '%s' because the access token does not have the required access",
+                entry.title,
             )
         else:
             raise
