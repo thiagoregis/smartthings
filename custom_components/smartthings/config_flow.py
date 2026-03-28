@@ -179,12 +179,16 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 entry.data[CONF_LOCATION_ID] for entry in self._async_current_entries()
             ]
             locations = await self.api.locations()
+            _LOGGER.debug("Localizações retornadas pela API: %s", [(loc.location_id, loc.name) for loc in locations])
+            _LOGGER.debug("Localizações já configuradas: %s", existing_locations)
             locations_options = {
                 location.location_id: location.name
                 for location in locations
                 if location.location_id not in existing_locations
             }
+            _LOGGER.debug("Localizações disponíveis para configuração: %s", locations_options)
             if not locations_options:
+                _LOGGER.error("Nenhuma localização disponível. Todas podem já estar configuradas ou a API retornou lista vazia.")
                 return self.async_abort(reason="no_available_locations")
 
             return self.async_show_form(
