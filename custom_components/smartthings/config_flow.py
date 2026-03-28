@@ -100,8 +100,10 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return self._show_step_pat(errors)
 
         # Setup end-point
+        _LOGGER.debug("Inicializando SmartThings API com token: %s...%s", self.access_token[:8], self.access_token[-8:])
         self.api = SmartThings(async_get_clientsession(self.hass), self.access_token)
         try:
+            _LOGGER.debug("Testando acesso à API com o token fornecido")
             app = await find_app(self.hass, self.api)
             if app:
                 await app.refresh()  # load all attributes
@@ -178,8 +180,13 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             existing_locations = [
                 entry.data[CONF_LOCATION_ID] for entry in self._async_current_entries()
             ]
-            locations = await self.api.locations()
-            _LOGGER.debug("Localizações retornadas pela API: %s", [(loc.location_id, loc.name) for loc in locations])
+            _LOGGER.debug("Chamando self.api.locations() com APP_ID: %s", self.app_id)
+            try:
+                locations = await self.api.locations()
+                _LOGGER.debug("Localizações retornadas pela API: %s", [(loc.location_id, loc.name) for loc in locations])
+            except Exception as ex:
+                _LOGGER.error("Erro ao chamar self.api.locations(): %s", ex)
+                locations = []
             _LOGGER.debug("Localizações já configuradas: %s", existing_locations)
             locations_options = {
                 location.location_id: location.name
