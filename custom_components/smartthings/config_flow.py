@@ -106,6 +106,7 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.debug("Testando acesso à API com o token fornecido")
             app = await find_app(self.hass, self.api)
             if app:
+                _LOGGER.debug("SmartApp existente encontrado: %s (%s)", app.app_name, app.app_id)
                 await app.refresh()  # load all attributes
                 await update_app(self.hass, app)
 
@@ -137,10 +138,12 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     self.oauth_client_id = client.client_id
             else:
                 app, client = await create_app(self.hass, self.api)
+                _LOGGER.debug("Novo SmartApp criado: %s (%s)", app.app_name, app.app_id)
                 self.oauth_client_secret = client.client_secret
                 self.oauth_client_id = client.client_id
             setup_smartapp(self.hass, app)
             self.app_id = app.app_id
+            _LOGGER.debug("SmartApp configurado localmente. ID: %s", self.app_id)
 
         except APIResponseError as ex:
             if ex.is_target_error():
@@ -171,6 +174,7 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected error setting up the SmartApp")
             return self._show_step_pat(errors)
 
+        _LOGGER.debug("SmartApp configurado com sucesso. App ID: %s. Prosseguindo para seleção de localização", self.app_id)
         return await self.async_step_select_location()
 
     async def async_step_select_location(self, user_input=None):
