@@ -1,302 +1,309 @@
 """Support for numbers through the SmartThings cloud API."""
 from __future__ import annotations
 
-from collections import namedtuple
-from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import asyncio
+from pysmartthings import Attribute, Capability, Command
 
-from typing import Literal
-
-from pysmartthings import Attribute, Capability
-from pysmartthings.device import DeviceEntity
-
-from homeassistant.components.number import NumberEntity, NumberMode
-
-from homeassistant.components.sensor import SensorDeviceClass
-
-
-from . import SmartThingsEntity
-from .const import DATA_BROKERS, DOMAIN, UNIT_MAP
-
-from homeassistant.const import PERCENTAGE
-
-Map = namedtuple(
-    "map",
-    "attribute command name unit_of_measurement icon min_value max_value step mode",
+from homeassistant.components.number import (
+    NumberDeviceClass,
+    NumberEntity,
+    NumberEntityDescription,
+    NumberMode,
 )
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-CAPABILITY_TO_NUMBER = {
-    Capability.audio_volume: [
-        Map(
-            Attribute.volume,
-            "set_volume",
-            "Audio Volume",
-            PERCENTAGE,
-            "mdi:volume-high",
-            0,
-            100,
-            1,
-            NumberMode.AUTO,
+from . import FullDevice, SmartThingsConfigEntry
+from .const import DOMAIN, MAIN, UNIT_MAP
+from .entity import SmartThingsEntity
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import Any
+
+
+@dataclass(frozen=True, kw_only=True)
+class SmartThingsNumberEntityDescription(NumberEntityDescription):
+    """Class describing SmartThings number entities."""
+
+    component: str = MAIN
+    command: Command | None = None
+    status_attribute: Attribute | str | None = None
+    value_attribute: Attribute | str | None = None
+
+
+CAPABILITY_TO_NUMBER: dict[
+    Capability | str, list[SmartThingsNumberEntityDescription]
+] = {
+    Capability.AUDIO_VOLUME: [
+        SmartThingsNumberEntityDescription(
+            key=Capability.AUDIO_VOLUME,  # Opravené: Používa sa Capability, nie Attribute
+            name="Audio Volume",
+            icon="mdi:volume-high",
+            native_min_value=0,
+            native_max_value=100,
+            native_step=1,
+            mode=NumberMode.SLIDER,
+            command=Command.SET_VOLUME,
+            status_attribute=Attribute.VOLUME,
+            native_unit_of_measurement=PERCENTAGE,
         )
     ],
 }
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Add numbers for a config entries."""
-    broker = hass.data[DOMAIN][DATA_BROKERS][config_entry.entry_id]
-    numbers = []
-    for device in broker.devices.values():
-        for capability in broker.get_assigned(device.device_id, "number"):
-            maps = CAPABILITY_TO_NUMBER[capability]
-            numbers.extend(
-                [
-                    SmartThingsNumber(
-                        device,
-                        m.attribute,
-                        m.command,
-                        m.name,
-                        m.unit_of_measurement,
-                        m.icon,
-                        m.min_value,
-                        m.max_value,
-                        m.step,
-                        m.mode,
-                    )
-                    for m in maps
-                ]
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: SmartThingsConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Add numbers for a config entry."""
+    entry_data = entry.runtime_data
+    entities: list[SmartThingsEntity] = []
+
+    # Generic numbers
+    for device in entry_data.devices.values():
+        for capability_name, descriptions in CAPABILITY_TO_NUMBER.items():
+            if capability_name in device.status[MAIN]:
+                for description in descriptions:
+                    entities.append(SmartThingsNumber(entry_data.client, device, description))
+
+        # Specialized numbers
+        if Capability.CUSTOM_WASHER_RINSE_CYCLES in device.status[MAIN]:
+            entities.append(
+                SmartThingsWasherRinseCyclesNumberEntity(entry_data.client, device)
             )
-        if (
-            device.status.attributes[Attribute.mnmn].value == "Samsung Electronics"
-            and device.type == "OCF"
+        if "hood" in device.status and (
+            Capability.SAMSUNG_CE_HOOD_FAN_SPEED in device.status["hood"]
+            and Capability.SAMSUNG_CE_CONNECTION_STATE
+            not in device.status["hood"]
         ):
-            model = device.status.attributes[Attribute.mnmo].value.split("|")[0]
-            if model in ("21K_REF_LCD_FHUB6.0", "ARTIK051_REF_17K"):
-                numbers.extend(
-                    [
-                        SamsungOcfTemperatureNumber(
-                            device,
-                            "Cooler Setpoint",
-                            "/temperature/desired/cooler/0",
-                            "slider",
-                        ),
-                        SamsungOcfTemperatureNumber(
-                            device,
-                            "Freezer Setpoint",
-                            "/temperature/desired/freezer/0",
-                            "slider",
-                        ),
-                    ]
+            entities.append(SmartThingsHoodNumberEntity(entry_data.client, device))
+        for component in ("cooler", "freezer"):
+            if component in device.status and (
+                Capability.THERMOSTAT_COOLING_SETPOINT in device.status[component]
+            ):
+                entities.append(
+                    SmartThingsRefrigeratorTemperatureNumberEntity(
+                        entry_data.client, device, component
+                    )
                 )
-    async_add_entities(numbers)
-
-
-def get_capabilities(capabilities: Sequence[str]) -> Sequence[str] | None:
-    """Return all capabilities supported if minimum required are present."""
-    # Must have a numeric value that is selectable.
-    return [
-        capability for capability in CAPABILITY_TO_NUMBER if capability in capabilities
-    ]
+    async_add_entities(entities)
 
 
 class SmartThingsNumber(SmartThingsEntity, NumberEntity):
-    """Define a SmartThings Number."""
+    """Define a generic SmartThings number."""
+
+    entity_description: SmartThingsNumberEntityDescription
 
     def __init__(
         self,
-        device: DeviceEntity,
-        attribute: str,
-        command: str,
-        name: str,
-        unit_of_measurement: str | None,
-        icon: str | None,
-        min_value: str | None,
-        max_value: str | None,
-        step: str | None,
-        mode: str | None,
+        client: Coroutine[Any, Any, Any],
+        device: FullDevice,
+        description: SmartThingsNumberEntityDescription,
     ) -> None:
         """Init the class."""
-        super().__init__(device)
-        self._attribute = attribute
-        self._command = command
-        self._name = name
-        self._attr_native_unit_of_measurement = unit_of_measurement
-        self._icon = icon
-        self._attr_native_min_value = min_value
-        self._attr_native_max_value = max_value
-        self._attr_native_step = step
-        self._attr_mode = mode
+        super().__init__(client, device, {description.key})
+        self.entity_description = description
+        self._attr_name = description.name
+        self._attr_unique_id = f"{device.device.device_id}_{description.key}"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current value."""
+        if not self.entity_description.status_attribute:
+            return None
+        return self.get_attribute_value(
+            self.entity_description.key, self.entity_description.status_attribute
+        )
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set the number value."""
-        await getattr(self._device, self._command)(int(value), set_status=True)
-        self.async_write_ha_state()
+        """Set new value."""
+        if self.entity_description.command:
+            await self.execute_device_command(
+                self.entity_description.key,
+                self.entity_description.command,
+                argument=int(value),
+            )
+
+
+class SmartThingsWasherRinseCyclesNumberEntity(SmartThingsEntity, NumberEntity):
+    """Define a washer rinse cycles number."""
+
+    _attr_mode = NumberMode.BOX
+    _attr_name = "Rinse Cycles"
+    _attr_entity_category = "config"
+
+    def __init__(self, client: Coroutine[Any, Any, Any], device: FullDevice) -> None:
+        """Init the class."""
+        super().__init__(client, device, {Capability.CUSTOM_WASHER_RINSE_CYCLES})
+        self._attr_unique_id = (
+            f"{device.device.device_id}_{Capability.CUSTOM_WASHER_RINSE_CYCLES}"
+        )
 
     @property
-    def name(self) -> str:
-        """Return the name of the number."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self._device.device_id}.{self._attribute}"
-
-    @property
-    def native_value(self) -> float:
-        """Return  Value."""
-        return self._device.status.attributes[self._attribute].value
-
-    @property
-    def icon(self) -> str:
-        """Return Icon."""
-        return self._icon
+    def native_value(self) -> float | None:
+        """Return the current value."""
+        return self.get_attribute_value(
+            Capability.CUSTOM_WASHER_RINSE_CYCLES, Attribute.WASHER_RINSE_CYCLES
+        )
 
     @property
     def native_min_value(self) -> float:
-        """Define mimimum level."""
-        return self._attr_native_min_value
+        """Return the minimum value."""
+        return min(self.supported_values)
 
     @property
     def native_max_value(self) -> float:
-        """Define maximum level."""
-        return self._attr_native_max_value
+        """Return the maximum value."""
+        return max(self.supported_values)
 
     @property
-    def native_step(self) -> float:
-        """Define stepping size"""
-        return self._attr_native_step
+    def supported_values(self) -> list[int]:
+        """Get the list of supported values."""
+        if (
+            values := self.get_attribute_value(
+                Capability.CUSTOM_WASHER_RINSE_CYCLES,
+                Attribute.SUPPORTED_WASHER_RINSE_CYCLES,
+            )
+        ) is None:
+            return []
+        return values
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new value."""
+        await self.execute_device_command(
+            Capability.CUSTOM_WASHER_RINSE_CYCLES,
+            Command.SET_WASHER_RINSE_CYCLES,
+            argument=int(value),
+        )
+
+
+class SmartThingsHoodNumberEntity(SmartThingsEntity, NumberEntity):
+    """Define a hood number."""
+
+    _attr_mode = NumberMode.SLIDER
+    _attr_name = "Fan Speed"
+    _attr_entity_category = "config"
+
+    def __init__(self, client: Coroutine[Any, Any, Any], device: FullDevice) -> None:
+        """Init the class."""
+        super().__init__(client, device, {Capability.SAMSUNG_CE_HOOD_FAN_SPEED}, component="hood")
+        self._attr_unique_id = f"{device.device.device_id}_hood_{Capability.SAMSUNG_CE_HOOD_FAN_SPEED}"
 
     @property
-    def native_unit_of_measurement(self) -> str | None:
-        """Return unit of measurement"""
-        unit = self._device.status.attributes[self._attribute].unit
-        return UNIT_MAP.get(unit) if unit else self._attr_native_unit_of_measurement
+    def native_value(self) -> float | None:
+        """Return the current value."""
+        return self.get_attribute_value(
+            Capability.SAMSUNG_CE_HOOD_FAN_SPEED, Attribute.HOOD_FAN_SPEED
+        )
 
     @property
-    def mode(self) -> Literal["auto", "slider", "box"]:
-        """Return representation mode"""
-        return self._attr_mode
+    def native_min_value(self) -> float:
+        """Return the minimum value."""
+        if (
+            min_value := self.get_attribute_value(
+                Capability.SAMSUNG_CE_HOOD_FAN_SPEED, Attribute.SETTABLE_MIN_FAN_SPEED
+            )
+        ) is None:
+            return 0
+        return min_value
+
+    @property
+    def native_max_value(self) -> float:
+        """Return the maximum value."""
+        if (
+            max_value := self.get_attribute_value(
+                Capability.SAMSUNG_CE_HOOD_FAN_SPEED, Attribute.SETTABLE_MAX_FAN_SPEED
+            )
+        ) is None:
+            return 0
+        return max_value
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new value."""
+        await self.execute_device_command(
+            Capability.SAMSUNG_CE_HOOD_FAN_SPEED,
+            Command.SET_HOOD_FAN_SPEED,
+            argument=int(value),
+        )
 
 
-class SamsungOcfTemperatureNumber(SmartThingsEntity, NumberEntity):
-    """Define a Samsung OCF Number."""
+class SmartThingsRefrigeratorTemperatureNumberEntity(SmartThingsEntity, NumberEntity):
+    """Define a refrigerator temperature number."""
 
-    execute_state = 0
-    min_value_state = 0
-    max_value_state = 0
-    unit_state = ""
-    init_bool = False
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
+    _attr_entity_category = "config"
 
     def __init__(
-        self,
-        device: DeviceEntity,
-        name: str,
-        page: str,
-        mode: str | None,
+        self, client: Coroutine[Any, Any, Any], device: FullDevice, component: str
     ) -> None:
         """Init the class."""
-        super().__init__(device)
-        self._name = name
-        self._page = page
-        self._attr_mode = mode
-
-    def startup(self):
-        """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute(self._page))
-        asyncio.gather(*tasks)
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Set the number value."""
-        result = await self._device.execute(self._page, {"temperature": value})
-        if result:
-            self._device.status.update_attribute_value(
-                "data",
-                {
-                    "payload": {
-                        "temperature": value,
-                        "range": [self.min_value_state, self.max_value_state],
-                        "units": self.unit_state,
-                    }
-                },
-            )
-            self.execute_state = value
-        self.async_write_ha_state()
+        super().__init__(client, device, {Capability.THERMOSTAT_COOLING_SETPOINT}, component=component)
+        self._attr_name = f"{component.capitalize()} Temperature"
+        self._attr_unique_id = f"{device.device.device_id}_{component}_{Capability.THERMOSTAT_COOLING_SETPOINT}"
 
     @property
-    def name(self) -> str:
-        """Return the name of the number."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        _unique_id = self._name.lower().replace(" ", "_")
-        return f"{self._device.device_id}.{_unique_id}"
-
-    @property
-    def native_value(self) -> float:
-        """Return  Value."""
-        if not self.init_bool:
-            self.startup()
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
-            self.init_bool = True
-            self.execute_state = int(
-                self._device.status.attributes[Attribute.data].value["payload"][
-                    "temperature"
-                ]
-            )
-        return int(self.execute_state)
-
-    @property
-    def icon(self) -> str:
-        """Return Icon."""
-        return "mdi:thermometer-lines"
-
-    @property
-    def native_min_value(self) -> float:
-        """Define mimimum level."""
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
-            self.min_value_state = int(
-                self._device.status.attributes[Attribute.data].value["payload"][
-                    "range"
-                ][0]
-            )
-        return self.min_value_state
-
-    @property
-    def native_max_value(self) -> float:
-        """Define maximum level."""
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
-            self.max_value_state = int(
-                self._device.status.attributes[Attribute.data].value["payload"][
-                    "range"
-                ][1]
-            )
-        return self.max_value_state
-
-    @property
-    def native_step(self) -> float:
-        """Define stepping size"""
-        return 1
+    def native_value(self) -> float | None:
+        """Return the current value."""
+        return self.get_attribute_value(
+            Capability.THERMOSTAT_COOLING_SETPOINT, Attribute.COOLING_SETPOINT
+        )
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        """Return unit of measurement"""
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
-            self.unit_state = self._device.status.attributes[Attribute.data].value[
-                "payload"
-            ]["units"]
-        return UNIT_MAP.get(self.unit_state) if self.unit_state else None
+        """Return the unit of measurement."""
+        if (
+            unit := self._internal_state[Capability.THERMOSTAT_COOLING_SETPOINT][
+                Attribute.COOLING_SETPOINT
+            ].unit
+        ) is None:
+            return UnitOfTemperature.CELSIUS
+        return UNIT_MAP[unit]
 
     @property
-    def mode(self) -> Literal["auto", "slider", "box"]:
-        """Return representation mode"""
-        return self._attr_mode
+    def native_min_value(self) -> float:
+        """Return the minimum value."""
+        if (
+            rng := self.get_attribute_value(
+                Capability.THERMOSTAT_COOLING_SETPOINT,
+                Attribute.COOLING_SETPOINT_RANGE,
+            )
+        ) is None:
+            return 0
+        return rng[0]
 
     @property
-    def device_class(self) -> str | None:
-        """Return Device Class."""
-        return SensorDeviceClass.TEMPERATURE
+    def native_max_value(self) -> float:
+        """Return the maximum value."""
+        if (
+            rng := self.get_attribute_value(
+                Capability.THERMOSTAT_COOLING_SETPOINT,
+                Attribute.COOLING_SETPOINT_RANGE,
+            )
+        ) is None:
+            return 0
+        return rng[1]
+
+    @property
+    def native_step(self) -> float:
+        """Return the step size."""
+        if (
+            rng := self.get_attribute_value(
+                Capability.THERMOSTAT_COOLING_SETPOINT,
+                Attribute.COOLING_SETPOINT_RANGE,
+            )
+        ) is None:
+            return 1
+        return rng[2]
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set new value."""
+        await self.execute_device_command(
+            Capability.THERMOSTAT_COOLING_SETPOINT,
+            Command.SET_COOLING_SETPOINT,
+            argument=value,
+        )

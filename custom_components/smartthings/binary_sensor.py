@@ -1,323 +1,296 @@
 """Support for binary sensors through the SmartThings cloud API."""
+
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable
+from dataclasses import dataclass
 
-from pysmartthings import Attribute, Capability
-
-import json
-
-import asyncio
+from pysmartthings import Attribute, Capability, Category, SmartThings, Status
 
 from homeassistant.components.binary_sensor import (
+    DOMAIN as BINARY_SENSOR_DOMAIN,
     BinarySensorDeviceClass,
     BinarySensorEntity,
+    BinarySensorEntityDescription,
 )
 from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import SmartThingsEntity
-from .const import DATA_BROKERS, DOMAIN
+from . import FullDevice, SmartThingsConfigEntry
+from .const import INVALID_SWITCH_CATEGORIES, MAIN
+from .entity import SmartThingsEntity
+from .util import deprecate_entity
 
-CAPABILITY_TO_ATTRIB = {
-    Capability.acceleration_sensor: Attribute.acceleration,
-    Capability.contact_sensor: Attribute.contact,
-    Capability.filter_status: Attribute.filter_status,
-    Capability.motion_sensor: Attribute.motion,
-    Capability.presence_sensor: Attribute.presence,
-    Capability.sound_sensor: Attribute.sound,
-    Capability.tamper_alert: Attribute.tamper,
-    Capability.valve: Attribute.valve,
-    Capability.water_sensor: Attribute.water,
+
+@dataclass(frozen=True, kw_only=True)
+class SmartThingsBinarySensorEntityDescription(BinarySensorEntityDescription):
+    """Describe a SmartThings binary sensor entity."""
+
+    is_on_key: str
+    category_device_class: dict[Category | str, BinarySensorDeviceClass] | None = None
+    category: set[Category] | None = None
+    exists_fn: Callable[[str], bool] | None = None
+    component_translation_key: dict[str, str] | None = None
+    deprecated_fn: Callable[
+        [dict[str, dict[Capability | str, dict[Attribute | str, Status]]]], str | None
+    ] = lambda _: None
+
+
+CAPABILITY_TO_SENSORS: dict[
+    Capability, dict[Attribute, SmartThingsBinarySensorEntityDescription]
+] = {
+    Capability.ACCELERATION_SENSOR: {
+        Attribute.ACCELERATION: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.ACCELERATION,
+            translation_key="acceleration",
+            device_class=BinarySensorDeviceClass.MOVING,
+            is_on_key="active",
+        )
+    },
+    Capability.CONTACT_SENSOR: {
+        Attribute.CONTACT: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.CONTACT,
+            device_class=BinarySensorDeviceClass.DOOR,
+            is_on_key="open",
+            category_device_class={
+                Category.GARAGE_DOOR: BinarySensorDeviceClass.GARAGE_DOOR,
+                Category.DOOR: BinarySensorDeviceClass.DOOR,
+                Category.WINDOW: BinarySensorDeviceClass.WINDOW,
+            },
+            exists_fn=lambda key: key in {"freezer", "cooler", "cvroom"},
+            component_translation_key={
+                "freezer": "freezer_door",
+                "cooler": "cooler_door",
+                "cvroom": "cool_select_plus_door",
+            },
+            deprecated_fn=(
+                lambda status: "fridge_door"
+                if "freezer" in status and "cooler" in status
+                else None
+            ),
+        )
+    },
+    Capability.CUSTOM_DRYER_WRINKLE_PREVENT: {
+        Attribute.OPERATING_STATE: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.OPERATING_STATE,
+            translation_key="dryer_wrinkle_prevent_active",
+            is_on_key="running",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+    },
+    Capability.SAMSUNG_CE_STEAM_CLOSET_KEEP_FRESH_MODE: {
+        Attribute.OPERATING_STATE: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.OPERATING_STATE,
+            translation_key="keep_fresh_mode_active",
+            is_on_key="running",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+    },
+    Capability.FILTER_STATUS: {
+        Attribute.FILTER_STATUS: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.FILTER_STATUS,
+            translation_key="filter_status",
+            device_class=BinarySensorDeviceClass.PROBLEM,
+            is_on_key="replace",
+        )
+    },
+    Capability.SAMSUNG_CE_KIDS_LOCK: {
+        Attribute.LOCK_STATE: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.LOCK_STATE,
+            translation_key="child_lock",
+            is_on_key="locked",
+        )
+    },
+    Capability.MOTION_SENSOR: {
+        Attribute.MOTION: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.MOTION,
+            device_class=BinarySensorDeviceClass.MOTION,
+            is_on_key="active",
+        )
+    },
+    Capability.PRESENCE_SENSOR: {
+        Attribute.PRESENCE: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.PRESENCE,
+            device_class=BinarySensorDeviceClass.PRESENCE,
+            is_on_key="present",
+        )
+    },
+    Capability.REMOTE_CONTROL_STATUS: {
+        Attribute.REMOTE_CONTROL_ENABLED: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.REMOTE_CONTROL_ENABLED,
+            translation_key="remote_control",
+            is_on_key="true",
+        )
+    },
+    Capability.SOUND_SENSOR: {
+        Attribute.SOUND: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.SOUND,
+            device_class=BinarySensorDeviceClass.SOUND,
+            is_on_key="detected",
+        )
+    },
+    Capability.SWITCH: {
+        Attribute.SWITCH: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.SWITCH,
+            device_class=BinarySensorDeviceClass.POWER,
+            is_on_key="on",
+            category=INVALID_SWITCH_CATEGORIES,
+        )
+    },
+    Capability.TAMPER_ALERT: {
+        Attribute.TAMPER: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.TAMPER,
+            device_class=BinarySensorDeviceClass.TAMPER,
+            is_on_key="detected",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        )
+    },
+    Capability.VALVE: {
+        Attribute.VALVE: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.VALVE,
+            translation_key="valve",
+            device_class=BinarySensorDeviceClass.OPENING,
+            is_on_key="open",
+            deprecated_fn=lambda _: "valve",
+        )
+    },
+    Capability.WATER_SENSOR: {
+        Attribute.WATER: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.WATER,
+            device_class=BinarySensorDeviceClass.MOISTURE,
+            is_on_key="wet",
+        )
+    },
+    Capability.SAMSUNG_CE_DOOR_STATE: {
+        Attribute.DOOR_STATE: SmartThingsBinarySensorEntityDescription(
+            key=Attribute.DOOR_STATE,
+            translation_key="door",
+            device_class=BinarySensorDeviceClass.OPENING,
+            is_on_key="open",
+        )
+    },
 }
-ATTRIB_TO_CLASS = {
-    Attribute.acceleration: BinarySensorDeviceClass.MOVING,
-    Attribute.contact: BinarySensorDeviceClass.OPENING,
-    Attribute.filter_status: BinarySensorDeviceClass.PROBLEM,
-    Attribute.motion: BinarySensorDeviceClass.MOTION,
-    Attribute.presence: BinarySensorDeviceClass.PRESENCE,
-    Attribute.sound: BinarySensorDeviceClass.SOUND,
-    Attribute.tamper: BinarySensorDeviceClass.PROBLEM,
-    Attribute.water: BinarySensorDeviceClass.MOISTURE,
-    Attribute.valve: BinarySensorDeviceClass.OPENING,  # Cambiato da DEVICE_CLASS_OPENING
-}
-ATTRIB_TO_ENTTIY_CATEGORY = {
-    Attribute.tamper: EntityCategory.DIAGNOSTIC,
-}
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+def get_main_component_category(
+    device: FullDevice,
+) -> Category | str:
+    """Get the main component of a device."""
+    main = device.device.components[MAIN]
+    return main.user_category or main.manufacturer_category
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: SmartThingsConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
     """Add binary sensors for a config entry."""
-    broker = hass.data[DOMAIN][DATA_BROKERS][config_entry.entry_id]
-    sensors = []
-    for device in broker.devices.values():
-        for capability in broker.get_assigned(device.device_id, "binary_sensor"):
-            attrib = CAPABILITY_TO_ATTRIB[capability]
-            sensors.append(SmartThingsBinarySensor(device, attrib))
-        if (
-            device.status.attributes[Attribute.mnmn].value == "Samsung Electronics"
-            and device.type == "OCF"
-        ):
-            model = device.status.attributes[Attribute.mnmo].value
-            model = model.split("|")[0]
-            if model in ("TP2X_DA-KS-RANGE-0101X",):
-                sensors.extend(
-                    [
-                        SamsungCooktopBurner(device, "Cooktop Bottom Left Burner", 1),
-                        SamsungCooktopBurner(device, "Cooktop Top Left Burner", 2),
-                        SamsungCooktopBurner(device, "Cooktop Top Right Burner", 8),
-                        SamsungCooktopBurner(device, "Cooktop Bottom Right", 16),
-                    ]
-                )
-            elif model in ("21K_REF_LCD_FHUB6.0", "ARTIK051_REF_17K"):
-                sensors.extend(
-                    [
-                        SamsungOcfDoorBinarySensor(
-                            device,
-                            "Cooler Door",
-                            "/door/cooler/0",
-                            "Open",
-                            "Closed",
-                            BinarySensorDeviceClass.DOOR,  # Cambiato da DEVICE_CLASS_DOOR
-                        ),
-                        SamsungOcfDoorBinarySensor(
-                            device,
-                            "Freezer Door",
-                            "/door/freezer/0",
-                            "Open",
-                            "Closed",
-                            BinarySensorDeviceClass.DOOR,  # Cambiato da DEVICE_CLASS_DOOR
-                        ),
-                        SamsungOcfDoorBinarySensor(
-                            device,
-                            "FlexZone Door",
-                            "/door/cvroom/0",
-                            "Open",
-                            "Closed",
-                            BinarySensorDeviceClass.DOOR,  # Cambiato da DEVICE_CLASS_DOOR
-                        ),
-                    ]
-                )
-    async_add_entities(sensors)
+    entry_data = entry.runtime_data
+    entities = []
 
+    entity_registry = er.async_get(hass)
 
-def get_capabilities(capabilities: Sequence[str]) -> Sequence[str] | None:
-    """Return all capabilities supported if minimum required are present."""
-    return [
-        capability for capability in CAPABILITY_TO_ATTRIB if capability in capabilities
-    ]
+    for device in entry_data.devices.values():  # pylint: disable=too-many-nested-blocks
+        for capability, attribute_map in CAPABILITY_TO_SENSORS.items():
+            for attribute, description in attribute_map.items():
+                for component in device.status:
+                    if (
+                        capability in device.status[component]
+                        and (
+                            component == MAIN
+                            or (
+                                description.exists_fn is not None
+                                and description.exists_fn(component)
+                            )
+                        )
+                        and (
+                            not description.category
+                            or get_main_component_category(device)
+                            in description.category
+                        )
+                    ):
+                        if (
+                            component == MAIN
+                            and (issue := description.deprecated_fn(device.status))
+                            is not None
+                        ):
+                            if deprecate_entity(
+                                hass,
+                                entity_registry,
+                                BINARY_SENSOR_DOMAIN,
+                                f"{device.device.device_id}_{component}_{capability}_{attribute}_{attribute}",
+                                f"deprecated_binary_{issue}",
+                            ):
+                                entities.append(
+                                    SmartThingsBinarySensor(
+                                        entry_data.client,
+                                        device,
+                                        description,
+                                        capability,
+                                        attribute,
+                                        component,
+                                    )
+                                )
+                            continue
+                        entities.append(
+                            SmartThingsBinarySensor(
+                                entry_data.client,
+                                device,
+                                description,
+                                capability,
+                                attribute,
+                                component,
+                            )
+                        )
+
+    async_add_entities(entities)
 
 
 class SmartThingsBinarySensor(SmartThingsEntity, BinarySensorEntity):
     """Define a SmartThings Binary Sensor."""
 
-    def __init__(self, device, attribute):
+    entity_description: SmartThingsBinarySensorEntityDescription
+
+    def __init__(
+        self,
+        client: SmartThings,
+        device: FullDevice,
+        entity_description: SmartThingsBinarySensorEntityDescription,
+        capability: Capability,
+        attribute: Attribute,
+        component: str,
+    ) -> None:
         """Init the class."""
-        super().__init__(device)
+        super().__init__(client, device, {capability}, component=component)
         self._attribute = attribute
-
-    @property
-    def name(self) -> str:
-        """Return the name of the binary sensor."""
-        return f"{self._device.label} {self._attribute}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self._device.device_id}.{self._attribute}"
-
-    @property
-    def is_on(self):
-        """Return true if the binary sensor is on."""
-        return self._device.status.is_on(self._attribute)
-
-    @property
-    def device_class(self):
-        """Return the class of this device."""
-        return ATTRIB_TO_CLASS[self._attribute]
-
-    @property
-    def entity_category(self):
-        """Return the entity category of this device."""
-        return ATTRIB_TO_ENTTIY_CATEGORY.get(self._attribute)
-
-
-class SamsungCooktopBurner(SmartThingsEntity, BinarySensorEntity):
-    """Define Samsung Cooktop Burner Sensor"""
-
-    execute_state = 0
-    output_state = False
-    init_bool = False
-
-    def __init__(self, device, name, burner_bitmask):
-        super().__init__(device)
-        self._name = name
-        self._burner_bitmask = burner_bitmask
-
-    def startup(self):
-        """Make sure that OCF page visits cooktopmonitoring on startup"""
-        tasks = []
-        tasks.append(self._device.execute("/cooktopmonitoring/vs/0"))
-        asyncio.gather(*tasks)
-
-    @property
-    def name(self) -> str:
-        """Return the name of the binary sensor."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        _unique_id = self._name.lower().replace(" ", "_")
-        return f"{self._device.device_id}.{_unique_id}"
-
-    @property
-    def is_on(self):
-        """Return the state of the sensor."""
-        if not self.init_bool:
-            self.startup()
-
+        self.capability = capability
+        self.entity_description = entity_description
+        self._attr_unique_id = f"{device.device.device_id}_{component}_{capability}_{attribute}_{attribute}"
         if (
-            self._device.status.attributes[Attribute.data].data["href"]
-            == "/cooktopmonitoring/vs/0"
+            entity_description.category_device_class
+            and (category := get_main_component_category(device))
+            in entity_description.category_device_class
         ):
-            self.init_bool = True
-            self.execute_state = int(
-                self._device.status.attributes[Attribute.data].value["payload"][
-                    "x.com.samsung.da.cooktopMonitoring"
-                ]
+            self._attr_device_class = entity_description.category_device_class[category]
+            self._attr_name = None
+        if (
+            entity_description.component_translation_key is not None
+            and (
+                translation_key := entity_description.component_translation_key.get(
+                    component
+                )
             )
-            if self.execute_state & self._burner_bitmask:
-                self.output_state = True
-            else:
-                self.output_state = False
-        return self.output_state
+            is not None
+        ):
+            self._attr_translation_key = translation_key
 
     @property
-    def icon(self):
-        if self.is_on:
-            return "mdi:checkbox-blank-circle"
-        return "mdi:checkbox-blank-circle-outline"
-
-
-class SamsungOcfModeOptionsBinarySensor(SmartThingsEntity, BinarySensorEntity):
-    """Define Samsung Cooktop Burner Sensor"""
-
-    execute_state = False
-    init_bool = False
-
-    def __init__(
-        self,
-        device,
-        name: str,
-        on_value: str,
-        off_value: str,
-        device_class: str | None,
-        on_icon: str | None,
-        off_icon: str | None,
-    ):
-        super().__init__(device)
-        self._name = name
-        self._on_value = on_value
-        self._off_value = off_value
-        self._attr_device_class = device_class
-        self._on_icon = on_icon
-        self._off_icon = off_icon
-
-    def startup(self):
-        """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute("/mode/vs/0"))
-        asyncio.gather(*tasks)
-        self.init_bool = True
-
-    @property
-    def name(self) -> str:
-        """Return the name of the binary sensor."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        _unique_id = self._name.lower().replace(" ", "_")
-        return f"{self._device.device_id}.{_unique_id}"
-
-    @property
-    def is_on(self):
-        """Return the state of the sensor."""
-        if not self.init_bool:
-            self.startup()
-
-        output = json.dumps(self._device.status.attributes[Attribute.data].value)
-
-        if self._on_value in output:
-            self.execute_state = True
-        if self._off_value in output:
-            self.execute_state = False
-        return self.execute_state
-
-    @property
-    def icon(self):
-        if self.is_on:
-            return self._on_icon
-        return self._off_icon
-
-
-class SamsungOcfDoorBinarySensor(SmartThingsEntity, BinarySensorEntity):
-    """Define Samsung Cooktop Burner Sensor"""
-
-    execute_state = False
-    init_bool = False
-
-    def __init__(
-        self,
-        device,
-        name: str,
-        page: str,
-        on_value: str,
-        off_value: str,
-        device_class: str | None,
-    ):
-        super().__init__(device)
-        self._name = name
-        self._page = page
-        self._on_value = on_value
-        self._off_value = off_value
-        self._attr_device_class = device_class
-
-    def startup(self):
-        """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute(self._page))
-        asyncio.gather(*tasks)
-
-    @property
-    def name(self) -> str:
-        """Return the name of the binary sensor."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        _unique_id = self._name.lower().replace(" ", "_")
-        return f"{self._device.device_id}.{_unique_id}"
-
-    @property
-    def is_on(self):
-        """Return the state of the sensor."""
-        if not self.init_bool:
-            self.startup()
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
-            self.init_bool = True
-            output = self._device.status.attributes[Attribute.data].value["payload"][
-                "openState"
-            ]
-            if self._on_value in output:
-                self.execute_state = True
-            if self._off_value in output:
-                self.execute_state = False
-        return self.execute_state
-
-    @property
-    def device_class(self):
-        """Return the class of this device."""
-        return self._attr_device_class
+    def is_on(self) -> bool:
+        """Return true if the binary sensor is on."""
+        return (
+            self.get_attribute_value(self.capability, self._attribute)
+            == self.entity_description.is_on_key
+        )
