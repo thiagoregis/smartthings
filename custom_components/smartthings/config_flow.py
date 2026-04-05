@@ -57,7 +57,7 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_user(user_input)
 
     async def async_step_user(self, user_input=None):
-        """Validate and confirm webhook setup."""
+        """Inicia o fluxo OAuth2 para login na conta Samsung."""
         await setup_smartapp_endpoint(self.hass)
         webhook_url = get_webhook_url(self.hass)
 
@@ -71,111 +71,72 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 },
             )
 
-        # Show the confirmation
+        # Mostra tela inicial com botão para login OAuth2
         if user_input is None:
             return self.async_show_form(
                 step_id="user",
                 description_placeholders={"webhook_url": webhook_url},
             )
 
-        # Show the next screen
-        return await self.async_step_pat()
+        # Inicia o fluxo OAuth2
+        return await self.async_step_oauth()
+
+    async def async_step_oauth(self, user_input=None):
+        """Redireciona o usuário para o login OAuth2 da Samsung."""
+        # Substitua pelos valores reais do seu app registrado no SmartThings
+        client_id = "SUA_CLIENT_ID"
+        redirect_uri = "https://meu-home-assistant.com/auth/external/callback"
+        scope = "r:devices:* x:devices:* r:locations:* x:locations:*"
+        oauth_url = (
+            f"https://auth-global.api.smartthings.com/oauth/authorize?"
+            f"client_id={client_id}&response_type=code&scope={scope}&redirect_uri={redirect_uri}"
+        )
+        return self.async_external_step(step_id="oauth", url=oauth_url)
+
+    async def async_step_code(self, user_input=None):
+        """Recebe o código de autorização e troca por access_token."""
+        import aiohttp
+        errors = {}
+        if user_input is None or "code" not in user_input:
+            errors["base"] = "missing_code"
+            return self.async_show_form(step_id="code", errors=errors)
+
+        code = user_input["code"]
+        client_id = "SUA_CLIENT_ID"  # Substitua pelo seu client_id
+        client_secret = "SUA_CLIENT_SECRET"  # Substitua pelo seu client_secret
+        redirect_uri = "https://meu-home-assistant.com/auth/external/callback"  # Substitua pelo seu redirect_uri
+
+        token_url = "https://auth-global.api.smartthings.com/oauth/token"
+        data = {
+            "grant_type": "authorization_code",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect_uri,
+        }
+
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.post(token_url, data=data) as resp:
+                resp_json = await resp.json()
+                if resp.status != 200:
+                    errors["base"] = resp_json.get("error_description", "token_exchange_failed")
+                    return self.async_show_form(step_id="code", errors=errors)
+                self.access_token = resp_json["access_token"]
+                self.refresh_token = resp_json.get("refresh_token")
+        except Exception as ex:
+            errors["base"] = "token_exchange_exception"
+            _LOGGER.error("Erro ao trocar código por token: %s", ex)
+            return self.async_show_form(step_id="code", errors=errors)
+
+        return await self.async_step_select_location()
 
     async def async_step_reauth(self, entry_data):
         """Handle configuration by re-auth."""
         self.entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        return await self.async_step_pat()
+        return await self.async_step_oauth()
 
-    async def async_step_pat(self, user_input=None):
-        """Get the Personal Access Token and validate it."""
-        errors = {}
-        if user_input is None or CONF_ACCESS_TOKEN not in user_input:
-            return self._show_step_pat(errors)
-
-        self.access_token = user_input[CONF_ACCESS_TOKEN]
-
-        # Ensure token is a UUID
-        if not VAL_UID_MATCHER.match(self.access_token):
-            errors[CONF_ACCESS_TOKEN] = "token_invalid_format"
-            return self._show_step_pat(errors)
-
-        # Setup end-point
-        _LOGGER.debug("Inicializando SmartThings API com token: %s...%s", self.access_token[:8], self.access_token[-8:])
-        self.api = SmartThings(async_get_clientsession(self.hass), self.access_token)
-        try:
-            _LOGGER.debug("Testando acesso à API com o token fornecido")
-            app = await find_app(self.hass, self.api)
-            if app:
-                _LOGGER.debug("SmartApp existente encontrado: %s (%s)", app.app_name, app.app_id)
-                await app.refresh()  # load all attributes
-                await update_app(self.hass, app)
-
-                # Update OAuth scopes
-                app_oauth = AppOAuth(app.app_id)
-                app_oauth.client_name = APP_OAUTH_CLIENT_NAME
-                app_oauth.scope.extend(APP_OAUTH_SCOPES)
-                await self.api.update_app_oauth(app_oauth)
-
-                # Find an existing entry to copy the oauth client
-                existing = next(
-                    (
-                        entry
-                        for entry in self._async_current_entries()
-                        if entry.data[CONF_APP_ID] == app.app_id
-                    ),
-                    None,
-                )
-                if existing:
-                    self.oauth_client_id = existing.data[CONF_CLIENT_ID]
-                    self.oauth_client_secret = existing.data[CONF_CLIENT_SECRET]
-                else:
-                    # Get oauth client id/secret by regenerating it
-                    app_oauth = AppOAuth(app.app_id)
-                    app_oauth.client_name = APP_OAUTH_CLIENT_NAME
-                    app_oauth.scope.extend(APP_OAUTH_SCOPES)
-                    client = await self.api.generate_app_oauth(app_oauth)
-                    self.oauth_client_secret = client.client_secret
-                    self.oauth_client_id = client.client_id
-            else:
-                app, client = await create_app(self.hass, self.api)
-                _LOGGER.debug("Novo SmartApp criado: %s (%s)", app.app_name, app.app_id)
-                self.oauth_client_secret = client.client_secret
-                self.oauth_client_id = client.client_id
-            setup_smartapp(self.hass, app)
-            self.app_id = app.app_id
-            _LOGGER.debug("SmartApp configurado localmente. ID: %s", self.app_id)
-
-        except APIResponseError as ex:
-            if ex.is_target_error():
-                errors["base"] = "webhook_error"
-            else:
-                errors["base"] = "app_setup_error"
-            _LOGGER.exception(
-                "API error setting up the SmartApp: %s", ex.raw_error_response
-            )
-            return self._show_step_pat(errors)
-        except ClientResponseError as ex:
-            if ex.status == HTTPStatus.UNAUTHORIZED:
-                errors[CONF_ACCESS_TOKEN] = "token_unauthorized"
-                _LOGGER.debug(
-                    "Unauthorized error received setting up SmartApp", exc_info=True
-                )
-            elif ex.status == HTTPStatus.FORBIDDEN:
-                errors[CONF_ACCESS_TOKEN] = "token_forbidden"
-                _LOGGER.debug(
-                    "Forbidden error received setting up SmartApp", exc_info=True
-                )
-            else:
-                errors["base"] = "app_setup_error"
-                _LOGGER.exception("Unexpected error setting up the SmartApp")
-            return self._show_step_pat(errors)
-        except Exception:  # pylint:disable=broad-except
-            errors["base"] = "app_setup_error"
-            _LOGGER.exception("Unexpected error setting up the SmartApp")
-            return self._show_step_pat(errors)
-
-        _LOGGER.debug("SmartApp configurado com sucesso. App ID: %s. Prosseguindo para seleção de localização", self.app_id)
-        return await self.async_step_select_location()
+    # async_step_pat removido, fluxo agora é OAuth2
 
     async def async_step_select_location(self, user_input=None):
         """Ask user to select the location to setup."""
@@ -186,15 +147,13 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ]
             _LOGGER.debug("Chamando self.api.locations() com APP_ID: %s", self.app_id)
             try:
-                locations = await self.api.locations()
-                _LOGGER.debug("Localizações retornadas pela API: %s", [(loc.location_id, loc.name) for loc in locations])
-            except Exception as ex:
+                client_id = "hass-smartthings"  # App oficial Home Assistant
+                client_secret = "hass-smartthings"  # App oficial Home Assistant
+                redirect_uri = "https://www.home-assistant.io/auth/external/callback"  # App oficial Home Assistant
                 _LOGGER.error("Erro ao chamar self.api.locations(): %s", ex)
                 locations = []
             _LOGGER.debug("Localizações já configuradas: %s", existing_locations)
             locations_options = {
-                location.location_id: location.name
-                for location in locations
                 if location.location_id not in existing_locations
             }
             _LOGGER.debug("Localizações disponíveis para configuração: %s", locations_options)
@@ -211,9 +170,9 @@ class SmartThingsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         self.location_id = user_input[CONF_LOCATION_ID]
         await self.async_set_unique_id(format_unique_id(self.app_id, self.location_id))
-        return await self.async_step_authorize()
-
-    async def async_step_authorize(self, user_input=None):
+                client_id = "hass-smartthings"  # App oficial Home Assistant
+                client_secret = "hass-smartthings"  # App oficial Home Assistant
+                redirect_uri = "https://www.home-assistant.io/auth/external/callback"  # App oficial Home Assistant
         """Wait for the user to authorize the app installation."""
         user_input = {} if user_input is None else user_input
         self.installed_app_id = user_input.get(CONF_INSTALLED_APP_ID)
