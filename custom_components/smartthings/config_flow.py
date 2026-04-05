@@ -1,7 +1,8 @@
+
 """Config flow to configure SmartThings."""
 
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from pysmartthings import SmartThings
